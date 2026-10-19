@@ -1,0 +1,4 @@
+{"amount": "23.95", "evidence_due_by": "2026-03-25", "id": 4001, "initiated_at": "2026-03-11T15:10:00Z", "order_id": 5257, "reason": "product_not_received", "status": "lost"}
+{"amount": "140.60", "evidence_due_by": "2026-05-02", "id": 4002, "initiated_at": "2026-04-18T15:59:00Z", "order_id": 5316, "reason": "product_not_received", "status": "lost"}
+{"amount": "36.00", "evidence_due_by": "2026-02-22", "id": 4003, "initiated_at": "2026-02-08T10:29:00Z", "order_id": 5345, "reason": "product_not_received", "status": "won"}
+{"amount": "26.95", "evidence_due_by": "2026-05-19", "id": 4004, "initiated_at": "2026-05-05T16:23:00Z", "order_id": 5762, "reason": "unrecognized", "status": "lost"}

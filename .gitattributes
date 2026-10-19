@@ -1,0 +1,3 @@
+# Keep LF line endings everywhere, including on Windows, so the generated
+# data is byte-identical on every machine and `python -m copilot.seed --check` passes.
+* text=auto eol=lf

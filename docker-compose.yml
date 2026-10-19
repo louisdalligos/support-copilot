@@ -1,0 +1,43 @@
+# Local stack. On the VM this same file runs production (plus Caddy, added in Phase 4).
+#
+#   docker compose up -d        start Postgres and Phoenix
+#   docker compose ps           check both are healthy
+#   docker compose down         stop (data is kept in named volumes)
+
+services:
+  postgres:
+    # Postgres 17 with the pgvector extension, for the knowledge base, approvals,
+    # the job queue, LangGraph checkpoints and Phoenix's own data.
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-copilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: copilot
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-copilot} -d copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  phoenix:
+    # Arize Phoenix: open-source LLM tracing and evals. One container, storing
+    # its data in the shared Postgres. UI at http://localhost:6006
+    image: arizephoenix/phoenix:${PHOENIX_VERSION:-version-20.9.0}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://${POSTGRES_USER:-copilot}:${POSTGRES_PASSWORD}@postgres:5432/phoenix
+    ports:
+      - "127.0.0.1:6006:6006"  # UI and OTLP over HTTP
+      - "127.0.0.1:4317:4317"  # OTLP over gRPC
+
+volumes:
+  pgdata:

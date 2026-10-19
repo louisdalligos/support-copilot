@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "support-copilot"
+version = "0.1.0"
+description = "AI support copilot for a fictional online store: RAG, MCP servers, a LangGraph agent and evals."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Louis" }]
+# Phase 1 (seed data, knowledge base, policy rules) uses only the standard library.
+# Runtime dependencies for the MCP servers, RAG and agent are added in Phase 2.
+# Note for Phase 2: pin the MCP SDK to 1.x ("mcp>=1.24,<2") everywhere, because
+# langchain-mcp-adapters does not support the 2.x SDK yet.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]  # long literal ticket texts and tables are clearer on one line
+
+[tool.ruff.lint.isort]
+known-first-party = ["copilot"]

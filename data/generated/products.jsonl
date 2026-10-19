@@ -1,0 +1,135 @@
+{"final_sale": false, "id": 101, "price": "21.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-101", "title": "Ethiopia Yirgacheffe 12 oz"}
+{"final_sale": false, "id": 102, "price": "50.40", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-102", "title": "Ethiopia Yirgacheffe 2 lb"}
+{"final_sale": false, "id": 103, "price": "115.50", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-103", "title": "Ethiopia Yirgacheffe 5 lb"}
+{"final_sale": false, "id": 104, "price": "22.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-104", "title": "Kenya Nyeri 12 oz"}
+{"final_sale": false, "id": 105, "price": "52.80", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-105", "title": "Kenya Nyeri 2 lb"}
+{"final_sale": false, "id": 106, "price": "121.00", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-106", "title": "Kenya Nyeri 5 lb"}
+{"final_sale": false, "id": 107, "price": "18.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-107", "title": "Colombia Huila (Medium Roast) 12 oz"}
+{"final_sale": false, "id": 108, "price": "43.20", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-108", "title": "Colombia Huila (Medium Roast) 2 lb"}
+{"final_sale": false, "id": 109, "price": "99.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-109", "title": "Colombia Huila (Medium Roast) 5 lb"}
+{"final_sale": false, "id": 110, "price": "18.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-110", "title": "Colombia Huila (Dark Roast) 12 oz"}
+{"final_sale": false, "id": 111, "price": "43.20", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-111", "title": "Colombia Huila (Dark Roast) 2 lb"}
+{"final_sale": false, "id": 112, "price": "99.00", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-112", "title": "Colombia Huila (Dark Roast) 5 lb"}
+{"final_sale": false, "id": 113, "price": "19.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-113", "title": "Guatemala Antigua 12 oz"}
+{"final_sale": false, "id": 114, "price": "45.60", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-114", "title": "Guatemala Antigua 2 lb"}
+{"final_sale": false, "id": 115, "price": "104.50", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-115", "title": "Guatemala Antigua 5 lb"}
+{"final_sale": false, "id": 116, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-116", "title": "Brazil Cerrado (Medium Roast) 12 oz"}
+{"final_sale": false, "id": 117, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-117", "title": "Brazil Cerrado (Medium Roast) 2 lb"}
+{"final_sale": false, "id": 118, "price": "93.50", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-118", "title": "Brazil Cerrado (Medium Roast) 5 lb"}
+{"final_sale": false, "id": 119, "price": "17.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-119", "title": "Brazil Cerrado (Dark Roast) 12 oz"}
+{"final_sale": false, "id": 120, "price": "40.80", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-120", "title": "Brazil Cerrado (Dark Roast) 2 lb"}
+{"final_sale": false, "id": 121, "price": "93.50", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-121", "title": "Brazil Cerrado (Dark Roast) 5 lb"}
+{"final_sale": false, "id": 122, "price": "20.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-122", "title": "Costa Rica Tarrazu (Light Roast) 12 oz"}
+{"final_sale": false, "id": 123, "price": "48.00", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-123", "title": "Costa Rica Tarrazu (Light Roast) 2 lb"}
+{"final_sale": false, "id": 124, "price": "110.00", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-124", "title": "Costa Rica Tarrazu (Light Roast) 5 lb"}
+{"final_sale": false, "id": 125, "price": "20.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-125", "title": "Costa Rica Tarrazu (Medium Roast) 12 oz"}
+{"final_sale": false, "id": 126, "price": "48.00", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-126", "title": "Costa Rica Tarrazu (Medium Roast) 2 lb"}
+{"final_sale": false, "id": 127, "price": "110.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-127", "title": "Costa Rica Tarrazu (Medium Roast) 5 lb"}
+{"final_sale": false, "id": 128, "price": "19.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-128", "title": "Sumatra Mandheling 12 oz"}
+{"final_sale": false, "id": 129, "price": "45.60", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-129", "title": "Sumatra Mandheling 2 lb"}
+{"final_sale": false, "id": 130, "price": "104.50", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-130", "title": "Sumatra Mandheling 5 lb"}
+{"final_sale": false, "id": 131, "price": "21.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-131", "title": "Rwanda Huye 12 oz"}
+{"final_sale": false, "id": 132, "price": "50.40", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-132", "title": "Rwanda Huye 2 lb"}
+{"final_sale": false, "id": 133, "price": "115.50", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-133", "title": "Rwanda Huye 5 lb"}
+{"final_sale": false, "id": 134, "price": "18.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-134", "title": "Peru Cajamarca 12 oz"}
+{"final_sale": false, "id": 135, "price": "43.20", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-135", "title": "Peru Cajamarca 2 lb"}
+{"final_sale": false, "id": 136, "price": "99.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-136", "title": "Peru Cajamarca 5 lb"}
+{"final_sale": false, "id": 137, "price": "18.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-137", "title": "Honduras Marcala 12 oz"}
+{"final_sale": false, "id": 138, "price": "43.20", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-138", "title": "Honduras Marcala 2 lb"}
+{"final_sale": false, "id": 139, "price": "99.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-139", "title": "Honduras Marcala 5 lb"}
+{"final_sale": false, "id": 140, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-140", "title": "Mexico Chiapas (Medium Roast) 12 oz"}
+{"final_sale": false, "id": 141, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-141", "title": "Mexico Chiapas (Medium Roast) 2 lb"}
+{"final_sale": false, "id": 142, "price": "93.50", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-142", "title": "Mexico Chiapas (Medium Roast) 5 lb"}
+{"final_sale": false, "id": 143, "price": "17.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-143", "title": "Mexico Chiapas (Dark Roast) 12 oz"}
+{"final_sale": false, "id": 144, "price": "40.80", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-144", "title": "Mexico Chiapas (Dark Roast) 2 lb"}
+{"final_sale": false, "id": 145, "price": "93.50", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-145", "title": "Mexico Chiapas (Dark Roast) 5 lb"}
+{"final_sale": false, "id": 146, "price": "19.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-146", "title": "Papua New Guinea Waghi 12 oz"}
+{"final_sale": false, "id": 147, "price": "45.60", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-147", "title": "Papua New Guinea Waghi 2 lb"}
+{"final_sale": false, "id": 148, "price": "104.50", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-148", "title": "Papua New Guinea Waghi 5 lb"}
+{"final_sale": false, "id": 149, "price": "21.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-149", "title": "Burundi Kayanza 12 oz"}
+{"final_sale": false, "id": 150, "price": "50.40", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-150", "title": "Burundi Kayanza 2 lb"}
+{"final_sale": false, "id": 151, "price": "115.50", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-151", "title": "Burundi Kayanza 5 lb"}
+{"final_sale": false, "id": 152, "price": "19.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-152", "title": "El Salvador Santa Ana 12 oz"}
+{"final_sale": false, "id": 153, "price": "45.60", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-153", "title": "El Salvador Santa Ana 2 lb"}
+{"final_sale": false, "id": 154, "price": "104.50", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-154", "title": "El Salvador Santa Ana 5 lb"}
+{"final_sale": false, "id": 155, "price": "18.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-155", "title": "Nicaragua Jinotega 12 oz"}
+{"final_sale": false, "id": 156, "price": "43.20", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-156", "title": "Nicaragua Jinotega 2 lb"}
+{"final_sale": false, "id": 157, "price": "99.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-157", "title": "Nicaragua Jinotega 5 lb"}
+{"final_sale": false, "id": 158, "price": "24.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-158", "title": "Panama Boquete 12 oz"}
+{"final_sale": false, "id": 159, "price": "57.60", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-159", "title": "Panama Boquete 2 lb"}
+{"final_sale": false, "id": 160, "price": "132.00", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-160", "title": "Panama Boquete 5 lb"}
+{"final_sale": false, "id": 161, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-161", "title": "House Blend 12 oz"}
+{"final_sale": false, "id": 162, "price": "38.40", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-162", "title": "House Blend 2 lb"}
+{"final_sale": false, "id": 163, "price": "88.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-163", "title": "House Blend 5 lb"}
+{"final_sale": false, "id": 164, "price": "16.00", "product_type": "coffee", "roast": "light", "size": "12 oz", "sku": "NW-164", "title": "Morning Light 12 oz"}
+{"final_sale": false, "id": 165, "price": "38.40", "product_type": "coffee", "roast": "light", "size": "2 lb", "sku": "NW-165", "title": "Morning Light 2 lb"}
+{"final_sale": false, "id": 166, "price": "88.00", "product_type": "coffee", "roast": "light", "size": "5 lb", "sku": "NW-166", "title": "Morning Light 5 lb"}
+{"final_sale": false, "id": 167, "price": "16.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-167", "title": "Dark Harbor 12 oz"}
+{"final_sale": false, "id": 168, "price": "38.40", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-168", "title": "Dark Harbor 2 lb"}
+{"final_sale": false, "id": 169, "price": "88.00", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-169", "title": "Dark Harbor 5 lb"}
+{"final_sale": false, "id": 170, "price": "16.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-170", "title": "Espresso Forte 12 oz"}
+{"final_sale": false, "id": 171, "price": "38.40", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-171", "title": "Espresso Forte 2 lb"}
+{"final_sale": false, "id": 172, "price": "88.00", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-172", "title": "Espresso Forte 5 lb"}
+{"final_sale": false, "id": 173, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-173", "title": "Breakfast Blend 12 oz"}
+{"final_sale": false, "id": 174, "price": "38.40", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-174", "title": "Breakfast Blend 2 lb"}
+{"final_sale": false, "id": 175, "price": "88.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-175", "title": "Breakfast Blend 5 lb"}
+{"final_sale": false, "id": 176, "price": "16.00", "product_type": "coffee", "roast": "dark", "size": "12 oz", "sku": "NW-176", "title": "Fireside 12 oz"}
+{"final_sale": false, "id": 177, "price": "38.40", "product_type": "coffee", "roast": "dark", "size": "2 lb", "sku": "NW-177", "title": "Fireside 2 lb"}
+{"final_sale": false, "id": 178, "price": "88.00", "product_type": "coffee", "roast": "dark", "size": "5 lb", "sku": "NW-178", "title": "Fireside 5 lb"}
+{"final_sale": false, "id": 179, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-179", "title": "Cold Brew Blend 12 oz"}
+{"final_sale": false, "id": 180, "price": "38.40", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-180", "title": "Cold Brew Blend 2 lb"}
+{"final_sale": false, "id": 181, "price": "88.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-181", "title": "Cold Brew Blend 5 lb"}
+{"final_sale": false, "id": 182, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-182", "title": "Holiday Blend 12 oz"}
+{"final_sale": false, "id": 183, "price": "38.40", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-183", "title": "Holiday Blend 2 lb"}
+{"final_sale": false, "id": 184, "price": "88.00", "product_type": "coffee", "roast": "medium", "size": "5 lb", "sku": "NW-184", "title": "Holiday Blend 5 lb"}
+{"final_sale": false, "id": 185, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-185", "title": "Decaf Colombia 12 oz"}
+{"final_sale": false, "id": 186, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-186", "title": "Decaf Colombia 2 lb"}
+{"final_sale": false, "id": 187, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-187", "title": "Decaf House 12 oz"}
+{"final_sale": false, "id": 188, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-188", "title": "Decaf House 2 lb"}
+{"final_sale": false, "id": 189, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-189", "title": "Decaf Espresso 12 oz"}
+{"final_sale": false, "id": 190, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-190", "title": "Decaf Espresso 2 lb"}
+{"final_sale": false, "id": 191, "price": "17.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-191", "title": "Decaf Peru 12 oz"}
+{"final_sale": false, "id": 192, "price": "40.80", "product_type": "coffee", "roast": "medium", "size": "2 lb", "sku": "NW-192", "title": "Decaf Peru 2 lb"}
+{"final_sale": false, "id": 193, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-193", "title": "Hazelnut Flavored 12 oz"}
+{"final_sale": false, "id": 194, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-194", "title": "Vanilla Flavored 12 oz"}
+{"final_sale": false, "id": 195, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-195", "title": "Cinnamon Flavored 12 oz"}
+{"final_sale": false, "id": 196, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-196", "title": "Caramel Flavored 12 oz"}
+{"final_sale": false, "id": 197, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-197", "title": "Chocolate Mint Flavored 12 oz"}
+{"final_sale": false, "id": 198, "price": "16.00", "product_type": "coffee", "roast": "medium", "size": "12 oz", "sku": "NW-198", "title": "Maple Pecan Flavored 12 oz"}
+{"final_sale": false, "id": 199, "price": "149.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-199", "title": "Northwind Burr Grinder"}
+{"final_sale": false, "id": 200, "price": "59.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-200", "title": "Hand Grinder"}
+{"final_sale": false, "id": 201, "price": "79.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-201", "title": "Gooseneck Kettle 1L"}
+{"final_sale": false, "id": 202, "price": "39.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-202", "title": "Stovetop Gooseneck Kettle"}
+{"final_sale": false, "id": 203, "price": "28.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-203", "title": "Pour-Over Dripper"}
+{"final_sale": false, "id": 204, "price": "24.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-204", "title": "Glass Carafe 600ml"}
+{"final_sale": false, "id": 205, "price": "39.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-205", "title": "French Press 34 oz"}
+{"final_sale": false, "id": 206, "price": "29.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-206", "title": "French Press 12 oz"}
+{"final_sale": false, "id": 207, "price": "429.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-207", "title": "Home Espresso Machine"}
+{"final_sale": false, "id": 208, "price": "49.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-208", "title": "Milk Frother"}
+{"final_sale": false, "id": 209, "price": "45.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-209", "title": "Coffee Scale with Timer"}
+{"final_sale": false, "id": 210, "price": "35.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-210", "title": "Cold Brew Maker"}
+{"final_sale": false, "id": 211, "price": "39.95", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-211", "title": "AeroPress"}
+{"final_sale": false, "id": 212, "price": "34.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-212", "title": "Moka Pot 6-Cup"}
+{"final_sale": false, "id": 213, "price": "29.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-213", "title": "Espresso Tamper"}
+{"final_sale": false, "id": 214, "price": "25.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-214", "title": "Knock Box"}
+{"final_sale": false, "id": 215, "price": "8.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-215", "title": "Paper Filters (100)"}
+{"final_sale": false, "id": 216, "price": "12.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-216", "title": "Descaling Solution"}
+{"final_sale": false, "id": 217, "price": "14.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-217", "title": "Burr Cleaning Tablets"}
+{"final_sale": false, "id": 218, "price": "26.00", "product_type": "equipment", "roast": null, "size": null, "sku": "NW-218", "title": "Airtight Coffee Canister"}
+{"final_sale": false, "id": 219, "price": "16.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-219", "title": "Northwind Mug"}
+{"final_sale": false, "id": 220, "price": "28.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-220", "title": "Travel Tumbler"}
+{"final_sale": false, "id": 221, "price": "18.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-221", "title": "Canvas Tote"}
+{"final_sale": false, "id": 222, "price": "25.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-222", "title": "Logo T-Shirt"}
+{"final_sale": true, "id": 223, "price": "9.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-223", "title": "Enamel Camp Mug (Clearance)"}
+{"final_sale": true, "id": 224, "price": "6.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-224", "title": "Holiday Ornament (Clearance)"}
+{"final_sale": false, "id": 225, "price": "12.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-225", "title": "Tasting Notebook"}
+{"final_sale": false, "id": 226, "price": "32.00", "product_type": "merch", "roast": null, "size": null, "sku": "NW-226", "title": "Barista Apron"}
+{"final_sale": false, "id": 227, "price": "14.40", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-227", "title": "Subscription: House Blend 12 oz"}
+{"final_sale": false, "id": 228, "price": "18.90", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-228", "title": "Subscription: Roaster's Choice 12 oz"}
+{"final_sale": false, "id": 229, "price": "34.56", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-229", "title": "Subscription: Espresso Forte 2 lb"}
+{"final_sale": false, "id": 230, "price": "15.30", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-230", "title": "Subscription: Decaf House 12 oz"}
+{"final_sale": false, "id": 231, "price": "36.00", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-231", "title": "Subscription: Single Origin Duo"}
+{"final_sale": false, "id": 232, "price": "38.88", "product_type": "subscription", "roast": null, "size": null, "sku": "NW-232", "title": "Subscription: Colombia Huila 2 lb"}
+{"final_sale": false, "id": 233, "price": "25.00", "product_type": "gift_card", "roast": null, "size": null, "sku": "NW-233", "title": "Gift Card $25"}
+{"final_sale": false, "id": 234, "price": "50.00", "product_type": "gift_card", "roast": null, "size": null, "sku": "NW-234", "title": "Gift Card $50"}
+{"final_sale": false, "id": 235, "price": "100.00", "product_type": "gift_card", "roast": null, "size": null, "sku": "NW-235", "title": "Gift Card $100"}
