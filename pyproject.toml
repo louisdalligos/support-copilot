@@ -9,11 +9,15 @@ description = "AI support copilot for a fictional online store: RAG, MCP servers
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Louis" }]
-# Phase 1 (seed data, knowledge base, policy rules) uses only the standard library.
-# Runtime dependencies for the MCP servers, RAG and agent are added in Phase 2.
-# Note for Phase 2: pin the MCP SDK to 1.x ("mcp>=1.24,<2") everywhere, because
-# langchain-mcp-adapters does not support the 2.x SDK yet.
-dependencies = []
+# The seed data, knowledge base and policy rules use only the standard library.
+# The MCP SDK is pinned to 1.x because langchain-mcp-adapters does not support 2.x yet.
+dependencies = [
+    "mcp>=1.24,<2",
+]
+
+[project.scripts]
+zendesk-mcp = "copilot.zendesk.__main__:main"
+shopify-mcp = "copilot.shopify.__main__:main"
 
 [project.optional-dependencies]
 dev = [

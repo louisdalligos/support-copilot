@@ -9,7 +9,7 @@ It is a portfolio project, built to show production AI engineering end to end: R
 | Phase | What | State |
 | --- | --- | --- |
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
-| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | Next |
+| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: MCP servers done |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | |
 | 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
@@ -23,7 +23,10 @@ src/copilot/store.py   the store's facts: refund window, shipping prices, descri
 src/copilot/policy.py  refund rules as code; the agent's safety check uses this
 src/copilot/kb.py      knowledge-base loader
 src/copilot/seed/      deterministic seed data generator
-tests/                 tests for the rules, the knowledge base and the data
+src/copilot/zendesk/   Zendesk MCP server and its fake backend
+src/copilot/shopify/   Shopify MCP server and its fake backend
+src/copilot/audit.py   audit log of every tool call, with emails redacted
+tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
 ```
 
@@ -46,25 +49,54 @@ The eval set deliberately includes messy tickets (typos, shouting, two questions
 
 Review samples by hand with `python -m copilot.seed --sample 10`.
 
-## Getting started (Windows, PowerShell)
+## The MCP servers
+
+Two MCP servers, written with the official Python SDK, give the agent its access to the store. Both run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change.
+
+| Server | Tools | Can write |
+| --- | --- | --- |
+| `zendesk` | `search_tickets`, `get_ticket`, `get_customer_tickets`, `add_internal_note`, `add_tags`, `set_priority` | Internal notes, tags and priority only. No tool replies to the customer. |
+| `shopify` | `get_order`, `get_customer`, `find_charges`, `check_refund_eligibility`, `propose_refund` | Refund proposals only. No tool issues a refund. |
+
+What keeps them safe:
+
+- **Proposals, not actions.** `propose_refund` files a proposal for a person to approve. Before filing, code checks it: the amount must fit what is still refundable (after refunds and other pending proposals), a duplicate-charge refund needs a real second capture, and an item refund must pass `copilot.policy`. A model can ask for anything; only valid proposals get through.
+- **Customer text is marked as untrusted.** Ticket comments from customers come back in a `customer_text` field that the server's instructions and the agent's prompt treat as data, never as instructions.
+- **Tool annotations.** Read tools are marked read-only, write tools non-destructive, so MCP clients can show and gate them correctly.
+- **Audit log.** Every call writes one JSON line to stderr with the outcome and the arguments, with emails hashed and note text left out.
+
+The tests drive the servers through a real MCP client session, and run every labeled eval ticket through the refund tools: the servers must agree with the labels.
+
+Run a server on its own:
+
+```bash
+python -m copilot.zendesk                              # stdio, for clients that start the server
+python -m copilot.shopify --transport streamable-http  # HTTP at http://127.0.0.1:8102/mcp
+```
+
+Try one interactively with the MCP Inspector (needs Node.js): `npx @modelcontextprotocol/inspector python -m copilot.shopify`
+
+## Getting started (Windows)
 
 Requires Python 3.11+ and Docker Desktop.
 
-```powershell
-cd "C:\Users\WIN11PC\AI LLM\support-copilot"
+In Git Bash:
+
+```bash
+cd support-copilot
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+source .venv/Scripts/activate
 pip install -e ".[dev]"
 
 pytest -q                          # run the tests
 python -m copilot.seed --check     # confirm the generated data is current
 python -m copilot.seed --sample 5  # read a few tickets
 
-copy .env.example .env             # then set POSTGRES_PASSWORD
+cp .env.example .env               # then set POSTGRES_PASSWORD
 docker compose up -d               # Postgres + Phoenix (UI at http://localhost:6006)
 ```
 
-On macOS or Linux, activate with `source .venv/bin/activate` and use `cp` instead of `copy`.
+In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead of `cp`. On macOS or Linux, activate with `source .venv/bin/activate`.
 
 ## Design decisions
 
