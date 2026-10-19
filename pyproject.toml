@@ -18,8 +18,14 @@ dependencies = [
 [project.scripts]
 zendesk-mcp = "copilot.zendesk.__main__:main"
 shopify-mcp = "copilot.shopify.__main__:main"
+policies-mcp = "copilot.rag.__main__:main"
 
 [project.optional-dependencies]
+# Open models for dense search and reranking. On a machine without a GPU, install
+# CPU-only PyTorch first: pip install torch --index-url https://download.pytorch.org/whl/cpu
+rag = [
+    "sentence-transformers>=5.1,<6",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.9",

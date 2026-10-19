@@ -9,7 +9,7 @@ It is a portfolio project, built to show production AI engineering end to end: R
 | Phase | What | State |
 | --- | --- | --- |
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
-| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: MCP servers done |
+| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: MCP servers and policy RAG done |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | |
 | 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
@@ -25,6 +25,7 @@ src/copilot/kb.py      knowledge-base loader
 src/copilot/seed/      deterministic seed data generator
 src/copilot/zendesk/   Zendesk MCP server and its fake backend
 src/copilot/shopify/   Shopify MCP server and its fake backend
+src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
 src/copilot/audit.py   audit log of every tool call, with emails redacted
 tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
@@ -51,10 +52,11 @@ Review samples by hand with `python -m copilot.seed --sample 10`.
 
 ## The MCP servers
 
-Two MCP servers, written with the official Python SDK, give the agent its access to the store. Both run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change.
+Three MCP servers, written with the official Python SDK, give the agent its access to the store. The Zendesk and Shopify servers run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change.
 
 | Server | Tools | Can write |
 | --- | --- | --- |
+| `policies` | `search_policies`, `get_policy`, `list_policies` | Nothing. |
 | `zendesk` | `search_tickets`, `get_ticket`, `get_customer_tickets`, `add_internal_note`, `add_tags`, `set_priority` | Internal notes, tags and priority only. No tool replies to the customer. |
 | `shopify` | `get_order`, `get_customer`, `find_charges`, `check_refund_eligibility`, `propose_refund` | Refund proposals only. No tool issues a refund. |
 
@@ -75,6 +77,41 @@ python -m copilot.shopify --transport streamable-http  # HTTP at http://127.0.0.
 ```
 
 Try one interactively with the MCP Inspector (needs Node.js): `npx @modelcontextprotocol/inspector python -m copilot.shopify`
+
+## Policy retrieval (RAG)
+
+The `policies` MCP server answers "what does the store's policy say?" with passages the agent can cite.
+
+1. **Chunking.** Each `##` section of a document is one chunk, prefixed with the document and section titles so it stands on its own.
+2. **Two searches.** BM25 keyword search catches exact terms ("PayPal", "NWC*COFFEE"); dense embeddings from [EmbeddingGemma](https://huggingface.co/google/embeddinggemma-300m) catch meaning ("crushed" finds the damaged-items policy).
+3. **Fusion.** Reciprocal rank fusion merges the two rankings without having to calibrate their scores against each other.
+4. **Reranking.** A cross-encoder, [bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3), rescores the top 10 by reading the question and each passage together.
+5. **Policy versions.** Old policy versions stay indexed but are never returned by default. For an order delivered before a policy changed, the agent passes the delivery date (`as_of`) and gets the version that applied to that order.
+
+Each stage is optional, so they can be measured separately. `python -m copilot.rag.evaluate` scores a pipeline on the 48 golden questions:
+
+| Pipeline | hit@1 | hit@5 | MRR | Stale citations | Seconds per query (laptop CPU) |
+| --- | --- | --- | --- | --- | --- |
+| BM25 only | 0.67 | 0.87 | 0.75 | 0 | < 0.01 |
+| BM25 + EmbeddingGemma + reranker, 20 candidates | 0.98 | 1.00 | 0.99 | 0 | 17.9 |
+| BM25 + EmbeddingGemma + reranker, 10 candidates (default) | 0.98 | 1.00 | 0.99 | 0 | 9.1 |
+
+BM25 misses questions that share no words with the answer ("Can I put beans in the freezer?" against a page about storing coffee). Adding dense search and the reranker closes that gap: every question finds a relevant document in the top 5, and nearly all rank it first. The cost is latency on CPU, which the reranker dominates.
+
+Rescoring 10 candidates instead of 20 gave the same hit@1, hit@5 and MRR in half the time (recall@5 dipped from 0.99 to 0.98: one question's second relevant document fell out of the top 5), so 10 is the default.
+
+**A negative result worth keeping.** The plan was to use the reranker's score as a "nothing relevant found" signal, so the agent would escalate questions the policies do not cover. Measured, it does not work: correct answers to casual questions scored as low as 0.0003 ("When can I reach a person?"), while off-topic passages for unanswerable questions scored up to 0.0021. No cutoff separates them. So retrieval always returns its best passages, and deciding whether they actually answer the question moves to the agent, where it is tested by the agent evals (unanswerable tickets must be escalated, never answered from general knowledge). The eval still reports the score distribution, to revisit with a larger set of unanswerable questions.
+
+CI gates the BM25 pipeline on every push (hit@5 of at least 0.85, and no stale citations). When a Hugging Face token is configured, it also runs the full model pipeline and requires hit@5 of at least 0.95.
+
+To run the full pipeline locally:
+
+```bash
+pip install -e ".[rag]"                      # sentence-transformers and PyTorch
+hf auth login                                # EmbeddingGemma is gated: accept its license on Hugging Face first
+python -m copilot.rag.evaluate --dense --rerank
+python -m copilot.rag --dense --rerank       # the MCP server with the full pipeline
+```
 
 ## Getting started (Windows)
 

@@ -25,6 +25,46 @@ jobs:
         run: pytest -q
       - name: Generated data is up to date
         run: python -m copilot.seed --check
+      - name: Retrieval eval (keyword search)
+        run: python -m copilot.rag.evaluate --min-hit5 0.85 --out reports/rag-bm25.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rag-bm25
+          path: reports/rag-bm25.json
+
+  # The full hybrid pipeline with open models from Hugging Face. Runs only when the
+  # HF_TOKEN secret is set, because EmbeddingGemma is a gated model.
+  rag-models:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HF_TOKEN != ''
+      - uses: actions/setup-python@v5
+        if: env.HF_TOKEN != ''
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/cache@v4
+        if: env.HF_TOKEN != ''
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('src/copilot/rag/models.py') }}
+      - name: Install (CPU-only PyTorch)
+        if: env.HF_TOKEN != ''
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[rag]"
+      - name: Retrieval eval (hybrid + reranker)
+        if: env.HF_TOKEN != ''
+        run: python -m copilot.rag.evaluate --dense --rerank --min-hit5 0.95 --out reports/rag-hybrid.json
+      - uses: actions/upload-artifact@v4
+        if: env.HF_TOKEN != ''
+        with:
+          name: rag-hybrid
+          path: reports/rag-hybrid.json
 
   compose:
     runs-on: ubuntu-latest
