@@ -9,10 +9,13 @@ description = "AI support copilot for a fictional online store: RAG, MCP servers
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Louis" }]
-# The seed data, knowledge base and policy rules use only the standard library.
 # The MCP SDK is pinned to 1.x because langchain-mcp-adapters does not support 2.x yet.
 dependencies = [
     "mcp>=1.24,<2",
+    "langgraph>=1.0,<2",
+    "langchain-core>=1.0,<2",
+    "langchain-mcp-adapters>=0.3,<0.4",
+    "langchain-anthropic>=1.0,<2",
 ]
 
 [project.scripts]

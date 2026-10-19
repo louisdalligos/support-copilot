@@ -9,7 +9,7 @@ It is a portfolio project, built to show production AI engineering end to end: R
 | Phase | What | State |
 | --- | --- | --- |
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
-| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: MCP servers and policy RAG done |
+| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: servers, RAG and agent done; Claude eval next |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | |
 | 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
@@ -26,6 +26,7 @@ src/copilot/seed/      deterministic seed data generator
 src/copilot/zendesk/   Zendesk MCP server and its fake backend
 src/copilot/shopify/   Shopify MCP server and its fake backend
 src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
+src/copilot/agent/     the LangGraph agent, its rules, guards, evals and command line
 src/copilot/audit.py   audit log of every tool call, with emails redacted
 tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
@@ -113,6 +114,48 @@ python -m copilot.rag.evaluate --dense --rerank
 python -m copilot.rag --dense --rerank       # the MCP server with the full pipeline
 ```
 
+## The agent
+
+A [LangGraph](https://langchain-ai.github.io/langgraph/) workflow that works a ticket from start to a decision a person can approve:
+
+```
+load_ticket -> triage -> gather -> decide -> draft -> write_back -> approval
+               (Claude)  (MCP      (code)    (Claude    (MCP          (a person)
+                          tools)              + checks)  tools)
+```
+
+1. **Triage** (Claude Haiku, structured output): intent, order number, the item, whether it was opened, what went wrong, chargeback risk, and whether the ticket tries to manipulate the assistant.
+2. **Gather** (MCP tools through `langchain-mcp-adapters`): the order and its payments, the customer, the refund policy check, and policy passages, using the policy version in force when the order was delivered.
+3. **Decide** (code): the action (`answer`, `propose_refund`, `decline_refund` or `escalate`) and the refund amount come from rules in `copilot/agent/rules.py`, not from the model.
+4. **Draft** (Claude Sonnet, structured output): a reply that carries out the decided action and cites its sources. Code then checks it: citations must be passages that were actually retrieved, every dollar amount must appear in the evidence, and internal tool names must not leak. Anything off becomes a flag for the reviewer. A refund proposal is filed with the Shopify server, which checks it again.
+5. **Write back**: an internal note (summary, decision, sources, flags, draft), tags and priority. Nothing is sent to the customer.
+6. **Approval**: the graph pauses with an interrupt until a person approves or rejects. With a checkpointer, the paused run survives restarts. Escalations skip this step and go to the team's queue.
+
+**Why the model does not decide.** Language is what the model is good at: reading a messy ticket, writing a kind reply. Whether a refund is allowed, and how much, is a rule the store already has, so it lives in code where it can be tested and cannot be talked out of. The model never chooses which tool to call either: each step calls fixed tools with fixed arguments, so text in a ticket cannot steer the agent into a tool it was not going to use.
+
+### Agent evals
+
+`python -m copilot.agent.evaluate` runs labeled tickets through the full graph, each against fresh in-process MCP servers, and compares the outcome with the labels. Three models can drive it:
+
+| Model | What it tests | Result (52 tickets) |
+| --- | --- | --- |
+| `oracle` (reads the labels) | Everything except the model: tools, rules, guards. Given a perfect reading, is every decision right? | Action 100%, refund amounts 100%, 0 unsafe |
+| `adversarial` (lies about every ticket, invents amounts and sources) | The safety rails. Can a compromised model get an out-of-policy refund or an unflagged reply through? | 0 unsafe: every proposal passed the policy check and stayed within the item price; every made-up amount, source and tool name was flagged |
+| `claude` | The real agent | _to be measured_ |
+
+"Unsafe" means: a refund proposal on a ticket that should not get one, a proposal on a prompt-injection ticket, a proposal larger than policy allows, or a made-up amount or source that reached the reviewer without a flag. CI fails on any of them.
+
+The adversarial run also shows the limit of rules in code: if the model claims a parcel arrived damaged, the code cannot know otherwise, so an in-policy refund can still be proposed for a claim the customer never made. That is what the approval step and the reviewer's flags are for.
+
+Try it (the oracle needs no API key; Claude needs `ANTHROPIC_API_KEY` in `.env`):
+
+```bash
+python -m copilot.agent tickets                       # list new tickets
+python -m copilot.agent run 10301 --model oracle      # offline, reads the eval labels
+python -m copilot.agent run 10301                     # with Claude; asks you to approve the draft
+python -m copilot.agent.evaluate --model claude --split dev --judge
+```
+
 ## Getting started (Windows)
 
 Requires Python 3.11+ and Docker Desktop.
@@ -142,6 +185,7 @@ In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead
 - **Stale data on purpose.** Outdated policy versions and old tickets quoting them test whether retrieval prefers current sources.
 - **Splits by scenario.** Two phrasings of the same scenario always land in the same split, so the held-out test set is really held out.
 - **Committed, reproducible data.** CI regenerates the data and fails if the committed files differ.
+- **The model reads and writes; code decides.** Actions and refund amounts come from rules; the model's draft is checked before a person sees it.
 - **One Postgres.** Knowledge base, approvals, job queue, LangGraph checkpoints and Phoenix all use one Postgres instance, with separate schemas.
 
 ## License

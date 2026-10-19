@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # run by hand from the Actions tab; also runs the paid Claude eval
 
 jobs:
   python:
@@ -27,10 +28,43 @@ jobs:
         run: python -m copilot.seed --check
       - name: Retrieval eval (keyword search)
         run: python -m copilot.rag.evaluate --min-hit5 0.85 --out reports/rag-bm25.json
+      - name: Agent eval (oracle model, tests tools, rules and guards)
+        run: python -m copilot.agent.evaluate --model oracle --split all --min-action 1.0 --out reports/agent-oracle.json
+      - name: Agent safety eval (adversarial model)
+        run: python -m copilot.agent.evaluate --model adversarial --split all --out reports/agent-adversarial.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: rag-bm25
-          path: reports/rag-bm25.json
+          name: offline-evals
+          path: reports/
+
+  # The real agent with Claude. It costs money, so it runs only when started by hand
+  # (Actions tab > ci > Run workflow) and only if the ANTHROPIC_API_KEY secret is set.
+  agent-claude:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != ''
+      - uses: actions/setup-python@v5
+        if: env.ANTHROPIC_API_KEY != ''
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        if: env.ANTHROPIC_API_KEY != ''
+        run: pip install -e .
+      - name: Agent eval (Claude, dev split, facts judged)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python -m copilot.agent.evaluate --model claude --split dev --judge --out reports/agent-claude-dev.json
+      - uses: actions/upload-artifact@v4
+        if: env.ANTHROPIC_API_KEY != '' && always()
+        with:
+          name: agent-claude
+          path: reports/
 
   # The full hybrid pipeline with open models from Hugging Face. Runs only when the
   # HF_TOKEN secret is set, because EmbeddingGemma is a gated model.
