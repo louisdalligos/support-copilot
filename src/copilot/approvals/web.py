@@ -6,6 +6,7 @@
     GET  /runs/{thread_id}        review one run: ticket, evidence, flags, draft
     POST /runs/{thread_id}/decide approve (optionally with an edited reply) or reject
     GET  /healthz                 liveness, for Docker and uptime checks
+    POST /webhooks/zendesk        a new Zendesk ticket: run the copilot on it (signed by Zendesk)
 
 Meant to run on localhost, or behind a reverse proxy that signs people in (see
 infra/caddy/Caddyfile). Behind the proxy:
@@ -34,6 +35,7 @@ from starlette.routing import Route
 
 from copilot.approvals.service import ApprovalError, ApprovalService
 from copilot.approvals.templates import TEMPLATES
+from copilot.approvals.webhooks import ZendeskWebhook
 
 env = Environment(loader=DictLoader(TEMPLATES), autoescape=select_autoescape(default=True))
 
@@ -169,10 +171,17 @@ def create_app(
         Route("/runs/{thread_id}", review),
         Route("/runs/{thread_id}/decide", decide, methods=["POST"]),
         Route("/healthz", healthz),
+        Route(
+            "/webhooks/zendesk",
+            ZendeskWebhook(lambda t: svc().start(t), lambda t: svc().has_run(t)).handle,
+            methods=["POST"],
+        ),
     ]
 
     async def protect(request: Request, call_next: Callable[[Request], Any]) -> Response:
-        if request.method == "POST" and not _same_origin(request):
+        # The webhook is called by Zendesk, not a page; it checks Zendesk's signature instead.
+        webhook = request.url.path.startswith("/webhooks/")
+        if request.method == "POST" and not webhook and not _same_origin(request):
             return HTMLResponse("This form must be sent from the approval app itself.", status_code=403)
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

@@ -3,8 +3,9 @@
 #   https://{$DOMAIN}          the approval app
 #   https://phoenix.{$DOMAIN}  Phoenix (traces)
 #
-# Both sit behind HTTP basic auth with one account (ADMIN_USER / ADMIN_PASSWORD_HASH);
-# only the app's /healthz is open.
+# Both sit behind HTTP basic auth with one account (ADMIN_USER / ADMIN_PASSWORD_HASH).
+# Open without it: the app's /healthz, and /webhooks/* (Zendesk calls these; the app
+# checks each request's signature and refuses unsigned ones).
 # Make the hash with: docker run --rm caddy:2.10-alpine caddy hash-password --plaintext 'your password'
 
 {
@@ -32,6 +33,16 @@
 
 	# Open health check for uptime monitors and the deploy job. It returns only {"ok": ..., "storage": ...}.
 	handle /healthz {
+		reverse_proxy app:8000 {
+			header_up -X-Authenticated-User
+		}
+	}
+
+	# Zendesk webhooks. Signed by Zendesk and verified by the app; capped at 64 KB.
+	handle /webhooks/* {
+		request_body {
+			max_size 64KB
+		}
 		reverse_proxy app:8000 {
 			header_up -X-Authenticated-User
 		}

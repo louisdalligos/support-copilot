@@ -1,9 +1,10 @@
 """Zendesk backends.
 
 The MCP server talks to a ZendeskBackend. FakeZendesk serves the seed data in
-memory, so the server runs and is tested without a Zendesk account. A backend
-for the real Zendesk API is added when we connect to real data; it implements
-the same interface, so the server does not change.
+memory, so the server runs and is tested without a Zendesk account. LiveZendesk
+(copilot.zendesk.live) talks to a real account and returns the same shapes, so the
+server does not change. connect() picks one: the real account when
+COPILOT_ZENDESK=live, the seed data otherwise.
 
 Ticket shapes follow the Zendesk Tickets API loosely: a ticket has a subject,
 status, priority, tags, a requester and a list of comments. Internal notes are
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -140,3 +142,12 @@ class FakeZendesk:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}")
         self._ticket(ticket_id)["status"] = status
         return status
+
+
+def connect(data_dir: Path) -> ZendeskBackend:
+    """The real Zendesk account when COPILOT_ZENDESK=live, otherwise the seed data in data_dir."""
+    if os.environ.get("COPILOT_ZENDESK") == "live":
+        from copilot.zendesk.live import LiveZendesk
+
+        return LiveZendesk.from_env()
+    return FakeZendesk.from_generated(data_dir)

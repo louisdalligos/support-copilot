@@ -62,7 +62,7 @@ The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs noth
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
 | 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
-| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify connected; Zendesk next |
+| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify connected; Zendesk and its webhook built, being tried on a live account |
 | 6. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
@@ -74,8 +74,8 @@ src/copilot/store.py   the store's facts: refund window, shipping prices, descri
 src/copilot/policy.py  refund rules as code; the agent's safety check uses this
 src/copilot/kb.py      knowledge-base loader
 src/copilot/seed/      deterministic seed data generator
-src/copilot/zendesk/   Zendesk MCP server and its fake backend
-src/copilot/shopify/   Shopify MCP server and its fake backend
+src/copilot/zendesk/   Zendesk MCP server, its fake backend and the live Zendesk API backend
+src/copilot/shopify/   Shopify MCP server, its fake backend and the live Shopify API backend
 src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
 src/copilot/agent/     the LangGraph agent, its rules, guards, evals and command line
 src/copilot/approvals/ the approval app: durable runs in Postgres, review pages, sending and refunds
@@ -114,7 +114,7 @@ Review samples by hand with `python -m copilot.seed --sample 10`.
 
 ## The MCP servers
 
-Three MCP servers, written with the official Python SDK, give the agent its access to the store. By default the Zendesk and Shopify servers run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change: the Shopify server already runs against a real store (see [below](#a-real-shopify-store)).
+Three MCP servers, written with the official Python SDK, give the agent its access to the store. By default the Zendesk and Shopify servers run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change: both also run against real accounts (see [a real Shopify store](#a-real-shopify-store) and [a real Zendesk account](#a-real-zendesk-account)).
 
 | Server | Tools | Can write |
 | --- | --- | --- |
@@ -155,6 +155,14 @@ A refund drafted by the copilot, approved by a person in the approval app, and i
 ![Order #1807 in the Shopify admin: delivered, then partially refunded $16.00 with the reason "Ticket 10325: item_refund, approved by" the reviewer](docs/images/shopify-refund.png)
 
 The public demo stays on the seed data, which resets on every restart, so every visitor gets the same tickets to try.
+
+### A real Zendesk account
+
+With `COPILOT_ZENDESK=live`, the Zendesk server talks to a real Zendesk account through the Support API ([docs/zendesk.md](docs/zendesk.md)).
+
+- **Same tickets, same tools:** tickets, comments and requesters are read into the shapes the agent already uses. The draft goes on the ticket as an internal note; the reply is posted only after a person approves.
+- **Starts on its own:** a Zendesk trigger calls `POST /webhooks/zendesk` when a ticket is created. The app checks Zendesk's HMAC signature and the timestamp (stale or unsigned requests get 401), skips tickets that already have a run so retries never draft twice, answers 202 and runs the copilot in the background.
+- **Demo data:** `python -m copilot.zendesk.demo_desk setup` imports the demo tickets with their customers through the ticket import API, which does not fire triggers; `demo_desk send 10301` creates a new ticket the normal way, so the webhook fires.
 
 ## Policy retrieval (RAG)
 

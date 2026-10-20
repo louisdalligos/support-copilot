@@ -36,7 +36,7 @@ from copilot.shopify.backend import FakeShopify
 from copilot.shopify.refunds import RefundError, check_refund_request
 from copilot.shopify.server import build_server as build_shopify
 from copilot.tracing import run_context
-from copilot.zendesk.backend import FakeZendesk
+from copilot.zendesk.backend import ZendeskBackend
 from copilot.zendesk.server import build_server as build_zendesk
 
 NAMESPACE = ("approvals",)
@@ -68,7 +68,7 @@ def _now() -> str:
 class Backends:
     """The store's systems. In this project, fakes loaded with the seed data, shared by every run."""
 
-    zendesk: FakeZendesk
+    zendesk: ZendeskBackend
     shopify: FakeShopify
     retriever: Retriever
     audit: io.StringIO = field(default_factory=io.StringIO)
@@ -148,6 +148,11 @@ class ApprovalService:
         return record
 
     # The queue
+
+    async def has_run(self, ticket_id: int) -> bool:
+        """Whether the copilot has already run on this ticket (any outcome)."""
+        found = await self.store.asearch(NAMESPACE, filter={"ticket_id": ticket_id}, limit=1)
+        return bool(found)
 
     async def records(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         found = await self.store.asearch(

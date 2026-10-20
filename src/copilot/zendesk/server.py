@@ -26,7 +26,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from copilot.audit import AuditLog
-from copilot.zendesk.backend import PRIORITIES, STATUSES, FakeZendesk, TicketNotFound, ZendeskBackend
+from copilot.zendesk.backend import PRIORITIES, STATUSES, TicketNotFound, ZendeskBackend, connect
 
 NOTE_AUTHOR = "support-copilot"
 MAX_NOTE_CHARS = 4000
@@ -226,4 +226,4 @@ def default_data_dir() -> Path:
 
 
 def build_default_server(data_dir: Path | None = None, **settings: Any) -> FastMCP:
-    return build_server(FakeZendesk.from_generated(data_dir or default_data_dir()), **settings)
+    return build_server(connect(data_dir or default_data_dir()), **settings)
