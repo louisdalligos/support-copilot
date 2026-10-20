@@ -62,7 +62,8 @@ The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs noth
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
 | 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
-| 5. Expand | Risk profiles, dispute evidence, model comparison | |
+| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify connected; Zendesk next |
+| 6. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
 
@@ -113,7 +114,7 @@ Review samples by hand with `python -m copilot.seed --sample 10`.
 
 ## The MCP servers
 
-Three MCP servers, written with the official Python SDK, give the agent its access to the store. The Zendesk and Shopify servers run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change.
+Three MCP servers, written with the official Python SDK, give the agent its access to the store. By default the Zendesk and Shopify servers run on fake backends that serve the seed data, so they work without a Zendesk or Shopify account. A real backend implements the same small interface, and the servers do not change: the Shopify server already runs against a real store (see [below](#a-real-shopify-store)).
 
 | Server | Tools | Can write |
 | --- | --- | --- |
@@ -138,6 +139,22 @@ python -m copilot.shopify --transport streamable-http  # HTTP at http://127.0.0.
 ```
 
 Try one interactively with the MCP Inspector (needs Node.js): `npx @modelcontextprotocol/inspector python -m copilot.shopify`
+
+### A real Shopify store
+
+With `COPILOT_SHOPIFY=live`, the Shopify server talks to a real Shopify development store through the Admin GraphQL API instead of the seed data ([docs/shopify.md](docs/shopify.md)). The agent, its rules and the approval app do not change.
+
+- **Signs in with client credentials:** an app made in Shopify's Dev Dashboard exchanges its ID and secret for an access token that lasts 24 hours, renewed before it expires.
+- **Reads what the agent needs:** orders, payments, past refunds and customers. Delivery dates come from the shipments' delivery events, and refund windows count from them using the real date.
+- **Keeps proposals on the order:** a refund waiting for approval is saved in a metafield on the Shopify order, so it survives restarts and the next proposal on that order counts it.
+- **Refunds only after approval:** when a person approves, the app checks the refund again and calls Shopify's `refundCreate` with an idempotency key, so a retried request cannot refund twice.
+- **Demo data:** `python -m copilot.shopify.demo_store setup` creates the orders the demo tickets refer to (test orders on Shopify's test gateway), with dates moved so each order keeps its age.
+
+A refund drafted by the copilot, approved by a person in the approval app, and issued in Shopify:
+
+![Order #1807 in the Shopify admin: delivered, then partially refunded $16.00 with the reason "Ticket 10325: item_refund, approved by" the reviewer](docs/images/shopify-refund.png)
+
+The public demo stays on the seed data, which resets on every restart, so every visitor gets the same tickets to try.
 
 ## Policy retrieval (RAG)
 
