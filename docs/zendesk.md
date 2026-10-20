@@ -81,6 +81,8 @@ python -m copilot.zendesk.demo_desk send 10301     # a new ticket with the text 
 
 The draft appears in the approval app's queue, and as an internal note on the ticket in Zendesk.
 
+With `COPILOT_MODEL=oracle` (the server's default), the copilot only recognizes the demo tickets, by the customer's own message. A ticket an agent types in Zendesk has no customer message, so the run fails with nothing drafted; use `demo_desk send`, or the Claude model for tickets of your own.
+
 ## 5. Running it on the server
 
 The server builds its `.env` from the SSM parameters under `/support-copilot/prod`, so live mode is a few parameters and a redeploy. Run these with your own AWS profile; the secrets go in as `SecureString` and never touch the repository:
@@ -96,7 +98,7 @@ aws ssm put-parameter --name $p/ZENDESK_WEBHOOK_SECRET --type SecureString --val
 gh workflow run deploy.yml
 ```
 
-To go back to the seed data (for example when the trial ends), delete `COPILOT_ZENDESK` and `COPILOT_SHOPIFY` with `aws ssm delete-parameter` and deploy again.
+To go back to the seed data (for example when the trial ends), delete `COPILOT_ZENDESK`, `COPILOT_SHOPIFY` and `ZENDESK_WEBHOOK_SECRET` with `aws ssm delete-parameter` and deploy again, and deactivate the trigger in Zendesk. Without the secret the webhook answers 404, so Zendesk's calls stop reaching the seed data. The other Zendesk and Shopify parameters can stay; they are read only in live mode.
 
 ## How it maps to Zendesk
 

@@ -133,3 +133,25 @@ jobs:
           done
           echo "$APP_URL/healthz did not answer" >&2
           exit 1
+
+      - name: Check the Zendesk webhook path
+        if: env.APP_URL != ''
+        run: |
+          # Zendesk must reach the app itself, not the site's sign-in. An unsigned call should get
+          # the app's own answer: 404 when the webhook is off (no secret), 401 with the app's error
+          # when it is on. Caddy's sign-in answers 401 with a WWW-Authenticate header instead.
+          code="$(curl -sS --max-time 10 -o body.txt -D headers.txt -w '%{http_code}' -X POST "$APP_URL/webhooks/zendesk")"
+          if grep -qi '^www-authenticate' headers.txt; then
+            echo "/webhooks/zendesk is behind the site sign-in: Zendesk cannot reach the app (is Caddy running the current Caddyfile?)" >&2
+            exit 1
+          fi
+          case "$code" in
+            404) echo "webhook off (no ZENDESK_WEBHOOK_SECRET)" ;;
+            401)
+              if grep -q 'invalid or expired signature' body.txt; then
+                echo "webhook on; unsigned calls refused by the app"
+              else
+                echo "401 from /webhooks/zendesk, but not from the app" >&2; cat body.txt >&2; exit 1
+              fi ;;
+            *) echo "unexpected answer from /webhooks/zendesk: $code" >&2; cat body.txt >&2; exit 1 ;;
+          esac

@@ -62,7 +62,7 @@ The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs noth
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
 | 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
-| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify and Zendesk connected; webhook on the server next |
+| 5. Real systems | A real Shopify store and Zendesk account, webhooks | **Done**: live Shopify store and Zendesk account; new tickets drafted automatically by webhook |
 | 6. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
@@ -165,6 +165,7 @@ With `COPILOT_ZENDESK=live`, the Zendesk server talks to a real Zendesk account 
 - **Same tickets, same tools:** tickets, comments and requesters are read into the shapes the agent already uses. The draft goes on the ticket as an internal note; the reply is posted only after a person approves.
 - **Starts on its own:** a Zendesk trigger calls `POST /webhooks/zendesk` when a ticket is created. The app checks Zendesk's HMAC signature and the timestamp (stale or unsigned requests get 401), skips tickets that already have a run so retries never draft twice, answers 202 and runs the copilot in the background.
 - **Demo data:** `python -m copilot.zendesk.demo_desk setup` imports the demo tickets with their customers through the ticket import API, which does not fire triggers; `demo_desk send 10301` creates a new ticket the normal way, so the webhook fires.
+- **Verified on the deployed server:** a new Zendesk ticket triggered the webhook, the server drafted it with no one clicking, and the approved reply and refund landed in Zendesk and Shopify. Each deploy also checks that `/webhooks/zendesk` reaches the app rather than the site's sign-in.
 
 A ticket in Zendesk after the copilot drafted it and a person approved it: the draft and its evidence as an internal note, the approval, and the reply sent to the customer. The $79.00 refund was issued on the order in Shopify.
 
