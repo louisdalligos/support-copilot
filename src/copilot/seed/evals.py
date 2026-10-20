@@ -12,11 +12,12 @@ the same scenario never land in different splits.
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from copilot.policy import Outcome, Problem, check_refund
+from copilot.policy import Outcome, Problem, RefundDecision, check_refund
 from copilot.seed.common import Dataset, add_days, fmt_money, human_date, iso_dt, messy, money
 from copilot.seed.orders import add_refund, add_transaction, new_order
 from copilot.seed.people import new_customer
@@ -145,12 +146,33 @@ class Builder:
             order=order,
             refund_amount=amount,
             injection=injection,
-            required_facts=[decision.reason],
+            required_facts=_customer_facts(decision, amount),
             expected_docs=[decision.policy_doc],
             policy_reason=decision.reason,
             refund_inputs={"opened": opened, "problem": problem.value},
             messy_phrasings=messy_phrasings,
         )
+
+
+_DAYS = re.compile(r"^(?P<what>.+?) (?P<days>\d+) days after delivery \(limit (?P<limit>\d+)\)\.$")
+
+
+def _customer_facts(decision: RefundDecision, amount: str | None) -> list[str]:
+    """What the reply must tell the customer. The rule's reason is written for staff ("reported 5
+    days after delivery (limit 14)"); a reply only needs the window, not the day count."""
+    reason = decision.reason
+    if m := _DAYS.match(reason):
+        inside = decision.outcome is not Outcome.DECLINE
+        when = (
+            f"within {m['limit']} days of delivery"
+            if inside
+            else f"more than {m['limit']} days after delivery"
+        )
+        reason = f"{m['what']} {when}"
+    facts = [reason]
+    if decision.outcome is Outcome.REFUND and amount:
+        facts.append(f"A refund of ${amount} is issued")
+    return facts
 
 
 def _payment_scenarios(b: Builder) -> list[Scenario]:

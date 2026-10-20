@@ -182,6 +182,8 @@ def retrieval_span(query: str, pipeline: str) -> Iterator[Any]:
         return
     parent, context_attributes = None, []
     try:
+        if _provider is None:  # tracing is off: there is no LangChain span to attach to
+            raise ImportError
         from openinference.instrumentation import get_attributes_from_context
         from openinference.instrumentation.langchain import get_current_span
         from opentelemetry import trace
