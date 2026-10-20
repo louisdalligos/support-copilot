@@ -18,3 +18,12 @@ dist/
 .DS_Store
 Thumbs.db
 reports/
+backups/
+
+# Terraform: local state holds generated passwords; tfvars holds your settings
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log

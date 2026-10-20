@@ -1,0 +1,18 @@
+# Optional: keep Terraform state in S3 with native locking (Terraform 1.10+).
+# Create the bucket once by hand, with versioning and public access blocked:
+#
+#   aws s3api create-bucket --bucket <your-state-bucket> --region ap-southeast-1 \
+#     --create-bucket-configuration LocationConstraint=ap-southeast-1
+#   aws s3api put-bucket-versioning --bucket <your-state-bucket> --versioning-configuration Status=Enabled
+#
+# Then copy this file to backend.tf, fill in the bucket, and run: terraform init -migrate-state
+
+terraform {
+  backend "s3" {
+    bucket       = "<your-state-bucket>"
+    key          = "support-copilot/prod.tfstate"
+    region       = "ap-southeast-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}

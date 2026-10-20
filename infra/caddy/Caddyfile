@@ -1,0 +1,53 @@
+# HTTPS, sign-in and security headers in front of the app and Phoenix.
+#
+#   https://{$DOMAIN}          the approval app
+#   https://phoenix.{$DOMAIN}  Phoenix (traces)
+#
+# Both sit behind HTTP basic auth with one account (ADMIN_USER / ADMIN_PASSWORD_HASH);
+# only the app's /healthz is open.
+# Make the hash with: docker run --rm caddy:2.10-alpine caddy hash-password --plaintext 'your password'
+
+{
+	email {$ACME_EMAIL}
+}
+
+(hardening) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+	encode zstd gzip
+}
+
+(sign_in) {
+	basic_auth {
+		{$ADMIN_USER} {$ADMIN_PASSWORD_HASH}
+	}
+}
+
+{$DOMAIN} {
+	import hardening
+
+	# Open health check for uptime monitors and the deploy job. It returns only {"ok": ..., "storage": ...}.
+	handle /healthz {
+		reverse_proxy app:8000 {
+			header_up -X-Authenticated-User
+		}
+	}
+
+	handle {
+		import sign_in
+		reverse_proxy app:8000 {
+			# Replaces any value a client sends, so the reviewer cannot be spoofed.
+			header_up X-Authenticated-User {http.auth.user.id}
+		}
+	}
+}
+
+phoenix.{$DOMAIN} {
+	import hardening
+	import sign_in
+	reverse_proxy phoenix:6006
+}

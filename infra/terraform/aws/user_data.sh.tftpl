@@ -1,0 +1,83 @@
+#!/bin/bash
+# First boot: Docker, the AWS CLI, ECR sign-in for Docker, swap, and the backup upload timer.
+# The app itself arrives with the first deploy (the Deploy workflow, or infra/aws/deploy.sh).
+# Log: /var/log/cloud-init-output.log
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# The Elastic IP is attached a few seconds after boot; wait for the internet.
+for _ in $(seq 1 60); do
+  curl -fsS --max-time 5 -o /dev/null https://aws.amazon.com && break
+  sleep 5
+done
+
+# Swap, so a memory spike slows things down instead of killing a container.
+if [ ! -f /swapfile ]; then
+  fallocate -l ${swap_gib}G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  swapon /swapfile
+fi
+
+apt-get update
+apt-get install -y --no-install-recommends docker.io docker-compose-v2 amazon-ecr-credential-helper unzip curl ca-certificates
+systemctl enable --now docker
+
+# AWS CLI v2 (arm64), from AWS.
+if ! command -v aws >/dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+
+# Settings the deploy and backup scripts read.
+mkdir -p /etc/support-copilot
+cat > /etc/support-copilot/host.env <<HOSTENV
+AWS_REGION=${region}
+AWS_DEFAULT_REGION=${region}
+COPILOT_PARAM_PREFIX=${param_prefix}
+COPILOT_BUCKET=${bucket}
+COPILOT_PROJECT_DIR=${project_dir}
+COMPOSE_PROJECT_NAME=${project_name}
+HOSTENV
+
+# Docker signs in to ECR with the instance role: no stored registry password.
+mkdir -p /root/.docker
+cat > /root/.docker/config.json <<'DOCKERCFG'
+{ "credHelpers": { "${ecr_registry}": "ecr-login" } }
+DOCKERCFG
+
+mkdir -p ${project_dir}/backups
+
+# Copy new database dumps to S3 every 6 hours. The S3 lifecycle rule expires old ones.
+cat > /etc/systemd/system/support-copilot-backup-upload.service <<'UNIT'
+[Unit]
+Description=Upload database backups to S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/support-copilot/host.env
+ExecStart=/bin/sh -c '/usr/local/bin/aws s3 sync "$COPILOT_PROJECT_DIR/backups" "s3://$COPILOT_BUCKET/${backup_prefix}" --exclude "*.partial" --only-show-errors'
+UNIT
+
+cat > /etc/systemd/system/support-copilot-backup-upload.timer <<'UNIT'
+[Unit]
+Description=Upload database backups to S3 every 6 hours
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now support-copilot-backup-upload.timer
+
+echo "support-copilot host ready; waiting for the first deploy"

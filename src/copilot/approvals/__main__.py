@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,12 +32,14 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--model", choices=["claude", "oracle"], default="claude")
+    parser.add_argument(
+        "--model", choices=["claude", "oracle"], default=os.environ.get("COPILOT_MODEL", "claude")
+    )
     parser.add_argument("--memory", action="store_true", help="do not use Postgres")
     parser.add_argument("--rag-models", action="store_true", help="dense search and reranker for policies")
     parser.add_argument("--no-tracing", action="store_true", help="do not send traces to Phoenix")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", default=os.environ.get("COPILOT_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("COPILOT_PORT", "8000")))
     args = parser.parse_args()
 
     import uvicorn
@@ -75,7 +78,15 @@ def main() -> int:
     from copilot.privacy import install_log_redaction
 
     app = create_app(open_service=open_service, model_name=args.model)
-    config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
+    config = uvicorn.Config(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level="info",
+        proxy_headers=True,
+        # Behind Caddy in Docker, trust its X-Forwarded-* headers; on localhost, trust nobody else.
+        forwarded_allow_ips=os.environ.get("COPILOT_FORWARDED_ALLOW_IPS", "127.0.0.1"),
+    )
     install_log_redaction()  # after uvicorn has set up its loggers, so its handlers get the filter too
     from copilot.tracing import setup_tracing, shutdown_tracing
 

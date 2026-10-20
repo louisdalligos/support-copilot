@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+
+acme_email  = "you@example.com"
+alert_email = "you@example.com"
+admin_user  = "reviewer"
+
+# Optional (defaults shown)
+# region             = "ap-southeast-1" # on an AWS "projects" account: the project's selected region
+# github_auth        = "oidc"           # "access-key" if the account cannot create OIDC providers
+# instance_type      = "t4g.small"      # free-tier eligible; "t4g.medium" (4 GiB) on the Paid plan
+# copilot_model      = "oracle"         # "claude" once ANTHROPIC_API_KEY is in Parameter Store
+# monthly_budget_usd = 20
+# domain             = ""               # empty: <ip>.sslip.io; or "copilot.yourdomain.com"
+# route53_zone_id    = ""               # set if the domain is in Route 53

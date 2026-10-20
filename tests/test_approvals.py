@@ -167,3 +167,30 @@ def test_paused_runs_survive_a_restart():
 
     # psycopg's async driver needs the selector event loop on Windows.
     asyncio.run(scenario(), loop_factory=asyncio.SelectorEventLoop if sys.platform == "win32" else None)
+
+
+def test_behind_the_proxy_the_signed_in_user_is_the_reviewer(monkeypatch):
+    monkeypatch.setenv("COPILOT_TRUSTED_USER_HEADER", "X-Authenticated-User")
+    svc = service()
+    client = TestClient(create_app(svc, model_name="oracle"), headers={"X-Authenticated-User": "louis"})
+    run = client.post(f"/tickets/{DUPLICATE}/run")
+    assert "Signed in as <strong>louis</strong>" in run.text
+    path = str(run.url).split("?")[0].replace("http://testserver", "")
+    # The form tries to record someone else; the proxy's user wins.
+    client.post(f"{path}/decide", data={"decision": "approve", "reviewer": "someone-else", "reply": "Hi!"})
+    decided = asyncio.run(svc.records("approved"))
+    assert [r["reviewer"] for r in decided] == ["louis"]
+
+
+def test_forms_from_other_sites_are_refused():
+    client = TestClient(create_app(service(), model_name="oracle"))
+    evil = client.post(f"/tickets/{DUPLICATE}/run", headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    ok = client.post(f"/tickets/{DUPLICATE}/run", headers={"Origin": "http://testserver"})
+    assert ok.status_code == 200
+
+
+def test_pages_send_security_headers():
+    page = TestClient(create_app(service(), model_name="oracle")).get("/")
+    assert page.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in page.headers["Content-Security-Policy"]

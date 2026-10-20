@@ -9,7 +9,7 @@ An AI support agent for a fictional online coffee store, Northwind Coffee Co. It
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** (Claude eval run pending) |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
-| 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | In progress: Phoenix tracing done |
+| 4. Deploy and demo | Docker on AWS EC2 with Terraform, Phoenix tracing, public sandbox | In progress: tracing, image and AWS setup done; going live next |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
@@ -31,6 +31,13 @@ src/copilot/privacy.py personal data redaction for logs, traces, reports and mod
 src/copilot/tracing.py OpenTelemetry tracing to Phoenix, redacted before export
 tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
+docker-compose.prod.yml  production overlay: the app, Caddy (HTTPS, sign-in) and backups
+Dockerfile             the approval app image
+infra/                 Postgres init, Caddyfile, backup script
+infra/terraform/aws/   the AWS infrastructure: VPC, EC2, IAM, ECR, S3, Parameter Store, budget, alarms
+infra/aws/             the scripts the deploy runs on the server
+docs/deploy.md         how to run it on any VM
+docs/aws.md            how to run it on AWS, deployed from GitHub Actions
 ```
 
 ## The seed data
@@ -235,6 +242,21 @@ LangGraph                                   session: ticket-10301-…   metadata
 
 Tracing is on for the approval app and the agent CLI, and off with `COPILOT_TRACING=off` or `--no-tracing`.
 
+## Deployment
+
+Production is one VM running Docker Compose: the approval app, Postgres, Phoenix, [Caddy](https://caddyserver.com) and a backup job. It runs on AWS ([docs/aws.md](docs/aws.md)), or on any VM with Docker ([docs/deploy.md](docs/deploy.md)).
+
+- **One image.** The `Dockerfile` builds the approval app (with the agent and its MCP servers in-process), runs it as a non-root user, and checks `/healthz`. The open models are an optional build argument, so the default image stays small.
+- **CI builds, tests and publishes it.** On every push, CI builds the image, starts it, and drives it over HTTP: it runs the copilot on a ticket, checks the refund proposal appears, and checks that a form posted from another site is refused. On `main`, the image is pushed to GitHub Container Registry for amd64 and arm64.
+- **Only Caddy faces the internet.** It serves HTTPS with automatic Let's Encrypt certificates, puts sign-in in front of both the app and Phoenix, and passes the signed-in user to the app, which records them as the reviewer on every decision. Postgres and Phoenix are reachable only from the VM itself.
+- **Backups.** Both databases are dumped every 24 hours and kept for 7 days, with restore steps in the guide. On AWS they are also copied to S3 and kept for 30 days.
+- **AWS, as code.** Terraform creates a VPC, a Graviton EC2 instance with no SSH port (shells go through SSM Session Manager), ECR, an S3 bucket for backups, the app's settings and generated secrets in Parameter Store, a budget alert and self-healing CloudWatch alarms. CI checks the Terraform (`fmt`, `validate`) and the server scripts (`shellcheck`).
+- **Deploys without stored keys.** After CI passes on `main`, GitHub Actions signs in to AWS with OIDC, copies the tested image to ECR by commit SHA, and runs the deploy on the instance through SSM Run Command, then checks the site from the internet. Rolling back is running the same workflow with an older SHA.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
 ## Personal data
 
 Customer data stays in the systems that own it (Zendesk and Shopify), where staff need it. Everywhere else it is replaced with a typed token before it is written or sent:
@@ -282,6 +304,7 @@ In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead
 - **The model reads and writes; code decides.** Actions and refund amounts come from rules; the model's draft is checked before a person sees it.
 - **Only people send and refund.** The agent drafts and proposes; the approval app sends and refunds after a person approves, re-checking the refund first.
 - **Personal data stays home.** Logs, reports and model input carry tokens instead of names, emails and card numbers.
+- **One VM, one compose file.** One EC2 instance costs less than a managed database or a load balancer alone, and the same compose file runs on a laptop. The guide lists what would change at larger scale.
 - **One Postgres.** Knowledge base, approvals, job queue, LangGraph checkpoints and Phoenix all use one Postgres instance, with separate schemas.
 
 ## License

@@ -7,7 +7,13 @@
     POST /runs/{thread_id}/decide approve (optionally with an edited reply) or reject
     GET  /healthz                 liveness, for Docker and uptime checks
 
-Meant to run on localhost, or behind a reverse proxy that adds sign-in (Phase 4).
+Meant to run on localhost, or behind a reverse proxy that signs people in (see
+infra/caddy/Caddyfile). Behind the proxy:
+
+- COPILOT_TRUSTED_USER_HEADER names the header the proxy sets to the signed-in user.
+  That user is recorded as the reviewer, and the name field cannot override it.
+- Every POST must come from this site (its Origin or Referer must match), because
+  browsers resend sign-in credentials on cross-site requests too.
 """
 
 from __future__ import annotations
@@ -16,10 +22,12 @@ import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from jinja2 import DictLoader, Environment, select_autoescape
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
@@ -28,6 +36,23 @@ from copilot.approvals.service import ApprovalError, ApprovalService
 from copilot.approvals.templates import TEMPLATES
 
 env = Environment(loader=DictLoader(TEMPLATES), autoescape=select_autoescape(default=True))
+
+
+def _trusted_user(request: Request) -> str | None:
+    header = os.environ.get("COPILOT_TRUSTED_USER_HEADER")
+    if not header:
+        return None
+    return (request.headers.get(header) or "").strip() or None
+
+
+def _same_origin(request: Request) -> bool:
+    """True if a POST comes from a page on this site. Requests without either header are
+    allowed (curl, tests); browsers always send at least one of them on form posts."""
+    source = request.headers.get("origin") or request.headers.get("referer")
+    if not source:
+        return True
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    return urlsplit(source).netloc == host
 
 
 def _default_reviewer() -> str:
@@ -63,7 +88,8 @@ def create_app(
             model=model_name,
             notice=request.query_params.get("notice"),
             notice_kind=request.query_params.get("kind", ""),
-            reviewer=_default_reviewer(),
+            reviewer=_trusted_user(request) or _default_reviewer(),
+            reviewer_locked=_trusted_user(request) is not None,
             **ctx,
         )
         return HTMLResponse(html, status_code=status)
@@ -114,7 +140,7 @@ def create_app(
         thread_id = request.path_params["thread_id"]
         form = await request.form()
         decision = form.get("decision")
-        reviewer = str(form.get("reviewer") or "").strip()
+        reviewer = _trusted_user(request) or str(form.get("reviewer") or "").strip()
         if decision not in ("approve", "reject") or not reviewer:
             return go(f"/runs/{thread_id}", "Choose approve or reject, and give your name.", "error")
         try:
@@ -144,4 +170,21 @@ def create_app(
         Route("/runs/{thread_id}/decide", decide, methods=["POST"]),
         Route("/healthz", healthz),
     ]
-    return Starlette(routes=routes, lifespan=lifespan)
+
+    async def protect(request: Request, call_next: Callable[[Request], Any]) -> Response:
+        if request.method == "POST" and not _same_origin(request):
+            return HTMLResponse("This form must be sent from the approval app itself.", status_code=403)
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+        )
+        return response
+
+    app = Starlette(
+        routes=routes, lifespan=lifespan, middleware=[Middleware(BaseHTTPMiddleware, dispatch=protect)]
+    )
+    return app

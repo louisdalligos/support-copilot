@@ -201,7 +201,7 @@ RUN = """{% extends "base.html" %}
     <form method="post" action="/runs/{{ record.thread_id }}/decide">
       <textarea name="reply">{{ state.draft.reply }}</textarea>
       <div class="actions">
-        <label class="small muted">Your name <input type="text" name="reviewer" value="{{ reviewer }}" required></label>
+        {% if reviewer_locked %}<span class="small muted">Signed in as <strong>{{ reviewer }}</strong></span>{% else %}<label class="small muted">Your name <input type="text" name="reviewer" value="{{ reviewer }}" required></label>{% endif %}
         <button class="primary" name="decision" value="approve">Approve and send{% if state.proposal %} · refund ${{ state.proposal.amount }}{% endif %}</button>
         <button name="decision" value="reject">Reject</button>
       </div>

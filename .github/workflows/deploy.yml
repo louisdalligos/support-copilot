@@ -1,0 +1,135 @@
+name: deploy
+
+# Deploys to the EC2 host after ci passes on main, or by hand (Actions tab > deploy > Run workflow).
+# Skipped until the AWS settings from `terraform output github_settings` are set (docs/aws.md).
+# Account details are secrets, so they are masked in the logs of a public repository.
+#
+# 1. Sign in to AWS with OIDC (short-lived credentials, no stored keys), or with the deploy user's key.
+# 2. Copy the commit's image from GHCR to ECR (no rebuild: it is the image ci tested).
+# 3. Upload the release bundle (compose files, Caddyfile, scripts) to S3.
+# 4. Run infra/aws/deploy.sh on the instance through SSM Run Command (no SSH).
+# 5. Check https://<domain>/healthz from the internet.
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full commit SHA to deploy (default: latest on main). ci must have published its image."
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_REGION != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    permissions:
+      contents: read
+      id-token: write # for the OIDC sign-in to AWS
+      packages: read # to read the image from GHCR
+    env:
+      ECR: ${{ secrets.AWS_ECR_REPOSITORY }}
+      BUCKET: ${{ secrets.AWS_RELEASE_BUCKET }}
+      INSTANCE: ${{ secrets.AWS_INSTANCE_ID }}
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Commit
+        run: |
+          echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git log -1 --format='Deploying %h: %s'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # OIDC (github_auth = "oidc"): the role. Otherwise the deploy user's access key (github_auth = "access-key").
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-session-name: deploy-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
+
+      - name: Copy the image to ECR
+        run: |
+          repo="${ECR#*/}"
+          if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$SHA" >/dev/null 2>&1; then
+            echo "$ECR:$SHA is already in ECR (tags are immutable)"
+          else
+            docker buildx imagetools create --tag "$ECR:$SHA" "ghcr.io/${GITHUB_REPOSITORY,,}:$SHA"
+          fi
+          docker buildx imagetools inspect "$ECR:$SHA" | grep -q 'linux/arm64' || { echo "the image has no arm64 build" >&2; exit 1; }
+
+      - name: Upload the release bundle
+        run: |
+          git archive --format=tar.gz -o release.tar.gz HEAD \
+            docker-compose.yml docker-compose.prod.yml infra/caddy infra/backup infra/postgres infra/aws
+          aws s3 cp release.tar.gz "s3://$BUCKET/releases/$SHA.tar.gz" --only-show-errors
+
+      - name: Deploy on the instance (SSM Run Command)
+        run: |
+          params="$(jq -nc --arg bucket "$BUCKET" --arg sha "$SHA" --arg image "$ECR:$SHA" '{
+            commands: [
+              "set -eu",
+              "set -a; . /etc/support-copilot/host.env; set +a",
+              "export PATH=/usr/local/bin:$PATH",
+              ("aws s3 cp s3://" + $bucket + "/releases/" + $sha + ".tar.gz /tmp/release.tar.gz --only-show-errors"),
+              "tar -xzf /tmp/release.tar.gz -C \"$COPILOT_PROJECT_DIR\" && rm /tmp/release.tar.gz",
+              ("bash \"$COPILOT_PROJECT_DIR/infra/aws/deploy.sh\" " + $image)
+            ],
+            executionTimeout: ["1200"]
+          }')"
+          id="$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
+            --comment "deploy ${SHA:0:12}" --timeout-seconds 600 --parameters "$params" \
+            --query Command.CommandId --output text)"
+          echo "SSM command $id"
+          status=Pending
+          for _ in $(seq 1 130); do
+            sleep 10
+            status="$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$status" in Pending|InProgress|Delayed) ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text || true
+          echo "status: $status"
+          test "$status" = Success
+
+      - name: Check from the internet
+        if: env.APP_URL != ''
+        run: |
+          # The first deploy waits for Let's Encrypt; give it a couple of minutes.
+          for _ in $(seq 1 24); do
+            curl -fsS --max-time 10 "$APP_URL/healthz" | grep -q '"ok":true' && { echo "healthy: $APP_URL"; exit 0; }
+            sleep 5
+          done
+          echo "$APP_URL/healthz did not answer" >&2
+          exit 1
