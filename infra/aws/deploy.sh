@@ -5,7 +5,8 @@
 #
 #   sudo bash /opt/support-copilot/infra/aws/deploy.sh <account>.dkr.ecr.<region>.amazonaws.com/support-copilot:<sha>
 #
-# It rebuilds .env from Parameter Store, pulls the image, restarts what changed, and waits
+# It rebuilds .env from Parameter Store, pulls the image, restarts what changed (Caddy too when
+# its Caddyfile changed), and waits
 # until the app reports healthy. On failure it prints the app's recent logs.
 set -euo pipefail
 
@@ -29,6 +30,16 @@ compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
 "${compose[@]}" config --quiet
 "${compose[@]}" pull --quiet
 "${compose[@]}" up -d --no-build --remove-orphans
+
+# Caddy reads its config at start, through a bind mount of one file. Unpacking a release
+# replaces that file, so a running Caddy would keep the old config: recreate it when the
+# Caddyfile changed since the last deploy.
+caddy_hash="$(sha256sum infra/caddy/Caddyfile | cut -d' ' -f1)"
+if [ "$caddy_hash" != "$(cat .caddyfile-hash 2>/dev/null || true)" ]; then
+  echo "deploy: Caddyfile changed; restarting Caddy"
+  "${compose[@]}" up -d --no-build --no-deps --force-recreate caddy
+  echo "$caddy_hash" > .caddyfile-hash
+fi
 
 app="$("${compose[@]}" ps -q app)"
 status=""
