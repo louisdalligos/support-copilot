@@ -112,7 +112,11 @@ def create_app(
         )
 
     async def tickets(request: Request) -> Response:
-        new = svc().backends.zendesk.search("", status="new", limit=500)
+        # Unanswered tickets. Zendesk may file a ticket as "open" rather than "new"
+        # (imported tickets, for example), so both count.
+        zendesk = svc().backends.zendesk
+        found = {t["id"]: t for s in ("new", "open") for t in zendesk.search("", status=s, limit=500)}
+        new = list(found.values())
         rows = [
             {"id": t["id"], "subject": t["subject"], "preview": t["comments"][0]["body"][:140]}
             for t in sorted(new, key=lambda t: t["id"])

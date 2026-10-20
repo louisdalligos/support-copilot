@@ -296,7 +296,7 @@ def test_connect_picks_the_backend(monkeypatch):
 def test_shift_keeps_age_and_never_goes_past_now():
     now = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
     assert shift("2026-10-10T07:11:00Z", 5, now) == "2026-10-15T07:11:00Z"
-    assert shift("2026-10-15T13:00:00Z", 5, now) == "2026-10-20T12:00:00Z"
+    assert shift("2026-10-15T13:00:00Z", 5, now) == "2026-10-20T11:50:00Z"
 
 
 def test_setup_imports_once_with_customers_and_dates(api):

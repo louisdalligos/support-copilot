@@ -90,7 +90,7 @@ class OracleModel(ScriptedModel):
             cited = [d for d in labels["expected_docs"] if d in retrieved] or retrieved[:1]
             return Draft(
                 reply="Thanks for reaching out. "
-                + " ".join(labels["required_facts"])
+                + " ".join(f"{fact.rstrip('.')}." for fact in labels["required_facts"])
                 + "\n\nNorthwind Coffee Support",
                 citations=cited,
                 covered=True,

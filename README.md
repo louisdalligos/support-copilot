@@ -62,7 +62,7 @@ The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs noth
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
 | 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
-| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify connected; Zendesk and its webhook built, being tried on a live account |
+| 5. Real systems | A real Shopify store and Zendesk account, webhooks | In progress: Shopify and Zendesk connected; webhook on the server next |
 | 6. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
@@ -165,6 +165,10 @@ With `COPILOT_ZENDESK=live`, the Zendesk server talks to a real Zendesk account 
 - **Same tickets, same tools:** tickets, comments and requesters are read into the shapes the agent already uses. The draft goes on the ticket as an internal note; the reply is posted only after a person approves.
 - **Starts on its own:** a Zendesk trigger calls `POST /webhooks/zendesk` when a ticket is created. The app checks Zendesk's HMAC signature and the timestamp (stale or unsigned requests get 401), skips tickets that already have a run so retries never draft twice, answers 202 and runs the copilot in the background.
 - **Demo data:** `python -m copilot.zendesk.demo_desk setup` imports the demo tickets with their customers through the ticket import API, which does not fire triggers; `demo_desk send 10301` creates a new ticket the normal way, so the webhook fires.
+
+A ticket in Zendesk after the copilot drafted it and a person approved it: the draft and its evidence as an internal note, the approval, and the reply sent to the customer. The $79.00 refund was issued on the order in Shopify.
+
+![Zendesk ticket "Kettle broken": the copilot's internal note proposing a $79.00 refund on order #1812 with its reason and sources, a note "Copilot draft approved by Louis", and the public reply to the customer; the ticket is solved](docs/images/zendesk-ticket.png)
 
 ## Policy retrieval (RAG)
 

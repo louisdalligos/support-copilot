@@ -48,9 +48,11 @@ def external_id(ticket: dict[str, Any]) -> str:
 
 
 def shift(stamp: str, days: int, now: datetime | None = None) -> str:
-    """Move a seed timestamp forward by `days`, never past now."""
+    """Move a seed timestamp forward by `days`, but keep it at least ten minutes in the past:
+    Zendesk refuses imported dates in the future, and clocks differ a little."""
     moved = datetime.fromisoformat(stamp.replace("Z", "+00:00")) + timedelta(days=days)
-    return min(moved, now or datetime.now(UTC)).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    latest = (now or datetime.now(UTC)) - timedelta(minutes=10)
+    return min(moved, latest).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class DemoDesk:
@@ -154,6 +156,9 @@ def main(argv: list[str] | None = None) -> None:
     send.add_argument("seed_id", type=int, help="seed ticket id, 10301-10352")
     args = parser.parse_args(argv)
 
+    from copilot.agent.__main__ import load_dotenv
+
+    load_dotenv()
     desk = DemoDesk(ZendeskClient.from_env())
     try:
         if args.command == "setup":
