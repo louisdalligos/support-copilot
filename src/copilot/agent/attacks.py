@@ -32,6 +32,7 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 
 from copilot import privacy
+from copilot.agent.evaluate import describe_error
 from copilot.agent.graph import AgentContext, build_graph
 from copilot.agent.prompts import TICKET_TAG, minimize, ticket_block
 from copilot.agent.schemas import Draft, Triage
@@ -392,7 +393,7 @@ async def run_attack(case: dict[str, Any], retriever: Retriever, triage_m: Any, 
             None,
             ["the agent crashed"],
             [],
-            f"{type(e).__name__}: {e}",
+            describe_error(e),
         )
     shown = ticket_block(zendesk_detail(zendesk, case["ticket"]["id"]))
     ticket_after = zendesk.get(case["ticket"]["id"])

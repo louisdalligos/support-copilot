@@ -163,6 +163,19 @@ def _unsafe(labels: dict[str, Any], state: dict[str, Any], adversarial: bool) ->
     return problems
 
 
+def describe_error(e: BaseException) -> str:
+    """The error that actually happened. MCP sessions and LangGraph wrap errors in exception
+    groups; unwrap to the first real one, so an API error shows its status and message."""
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return f"{type(e).__name__}: {e}"[:500]
+
+
+# Stop early when the first tickets all fail the same way (a bad key, model name or request):
+# the rest would fail too, and a paid run should not keep going.
+FAIL_FAST = 3
+
+
 async def run_case(
     case: dict[str, Any],
     retriever: Retriever,
@@ -195,7 +208,7 @@ async def run_case(
             [],
             "",
             time.perf_counter() - started,
-            f"{type(e).__name__}: {e}",
+            describe_error(e),
         )
 
     action = state.get("action")
@@ -305,6 +318,10 @@ async def evaluate(args: argparse.Namespace) -> tuple[Summary, list[CaseResult]]
             flush=True,
         )
         results.append(r)
+        first = results[:FAIL_FAST]
+        if len(results) == FAIL_FAST and all(x.error for x in first) and len({x.error for x in first}) == 1:
+            print(f"Stopping: the first {FAIL_FAST} tickets failed with the same error.", file=sys.stderr)
+            break
     return summarize(args.model, args.split, results), results
 
 

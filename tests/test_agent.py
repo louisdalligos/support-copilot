@@ -199,3 +199,11 @@ def test_unknown_ticket_fails_cleanly():
         assert model.calls == []  # the model is never called for a ticket that does not exist
 
     asyncio.run(scenario())
+
+
+def test_errors_are_unwrapped_from_exception_groups():
+    from copilot.agent.evaluate import describe_error
+
+    inner = ValueError("Error code: 400 - model not found")
+    wrapped = ExceptionGroup("unhandled errors in a TaskGroup", [ExceptionGroup("inner", [inner])])
+    assert describe_error(wrapped) == "ValueError: Error code: 400 - model not found"

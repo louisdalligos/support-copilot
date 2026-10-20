@@ -16,9 +16,20 @@ DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5"
 
 
 def chat_model(name: str) -> BaseChatModel:
+    """A Claude chat model whose structured outputs use Claude's native JSON schema output.
+
+    Current Claude models reject forced tool use and non-default sampling settings, so the
+    model is called with its defaults (no temperature) and returns structured output through
+    `output_config.format` instead of a forced tool call. `max_tokens` covers any thinking as
+    well as the answer, so it is set well above the size of a reply.
+    """
     from langchain_anthropic import ChatAnthropic
 
-    return ChatAnthropic(model=name, temperature=0, max_tokens=2048, max_retries=3, timeout=60)
+    class StructuredClaude(ChatAnthropic):
+        def with_structured_output(self, schema, *, method="json_schema", **kwargs):  # type: ignore[override]
+            return super().with_structured_output(schema, method=method, **kwargs)
+
+    return StructuredClaude(model=name, max_tokens=8192, max_retries=3, timeout=120)
 
 
 def triage_model() -> BaseChatModel:
