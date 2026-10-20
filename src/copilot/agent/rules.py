@@ -23,6 +23,8 @@ from copilot.privacy import find_personal_data
 from copilot.store import TODAY
 
 ORDER_NAME = re.compile(r"#\s?(\d{4,})")
+# A marker placed in the system prompts. If it ever shows up in a reply, the prompt leaked.
+CANARY = "NWC-REF-7F3A"
 REDACTION_TOKEN = re.compile(r"\[(?:EMAIL|PHONE|CARD|CARD_LAST4|NAME|ADDRESS|IP):[0-9a-f]{8}\]")
 MONEY = re.compile(r"\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)")
 LOST_IN_TRANSIT_DAYS = 7
@@ -236,9 +238,64 @@ def allowed_amounts(ev: Evidence, decision: Decision) -> set[str]:
     return normalized
 
 
-def guard(draft: Draft, decision: Decision, ev: Evidence) -> GuardResult:
-    """Checks on the model's draft. Problems become flags that a person sees before approving."""
+URL = re.compile(r"\b(?:https?://|www\.)[^\s<>()\"']+", re.IGNORECASE)
+STORE_URL = re.compile(r"^(?:https?://)?(?:www\.)?northwind-coffee\.example(?:[/?#]|$)", re.IGNORECASE)
+# Sentences end at . ! or ? followed by a space or the end, so "$22.95" is not split in two.
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
+# A claim that a refund already happened: past or perfect tense, not a policy statement
+# ("refunds are issued within 7 days") and not a negation ("no refund has been issued").
+REFUND_DONE = re.compile(
+    r"\b(?:(?:has|have|had)\s+(?:now\s+|already\s+|just\s+)?been|was|were|we(?:'ve| have)?|i(?:'ve| have))\s+"
+    r"(?:now\s+|already\s+|just\s+)?(?:issued|processed|refunded|sent|credited|approved|completed)\b"
+    r"|\bis\s+(?:now\s+)?on\s+its\s+way\b",
+    re.IGNORECASE,
+)
+NEGATION = re.compile(
+    r"\b(?:no|not|never|hasn't|haven't|hadn't|wasn't|weren't|isn't|cannot|can't|won't)\b", re.I
+)
+
+
+def _ngrams(text: str, n: int = 8) -> set[tuple[str, ...]]:
+    words = re.findall(r"[a-z0-9']+", text.lower())
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
+def _refund_claim_problems(reply: str, decision: Decision, ev: Evidence) -> list[str]:
+    """A reply may only say a refund happened if one is proposed, or already exists on the order,
+    and only for that amount."""
+    valid = {decision.refund.amount} if decision.refund else set()
+    for r in (ev.order or {}).get("refunds", []):
+        valid.add(r["amount"])
+    problems = []
+    for sentence in SENTENCE_END.split(reply):
+        if "refund" not in sentence.lower() or not REFUND_DONE.search(sentence) or NEGATION.search(sentence):
+            continue
+        if not valid:
+            problems.append("Reply says a refund was made, but no refund is proposed or on record")
+            continue
+        amounts = {m.replace(",", "") for m in MONEY.findall(sentence)}
+        amounts = {a if "." in a else f"{a}.00" for a in amounts}
+        wrong = sorted(amounts - valid)
+        if wrong:
+            problems.append(
+                f"Reply states a refund of {', '.join('$' + w for w in wrong)}, "
+                f"but the refund is ${', $'.join(sorted(valid))}"
+            )
+    return list(dict.fromkeys(problems))
+
+
+def guard(draft: Draft, decision: Decision, ev: Evidence, *, prompts: tuple[str, ...] = ()) -> GuardResult:
+    """Checks on the model's draft.
+
+    Problems become flags that the reviewer sees. Some are serious enough that the draft must
+    not be sent at all, so the ticket is escalated instead: a reply that leaks the prompt,
+    repeats personal data, links outside the store, or misstates a refund. These are what a
+    successful prompt injection would produce, so they are checked in code, whatever the
+    model says about the ticket.
+    """
     flags: list[str] = []
+    blocking: list[str] = []
+    reply = draft.reply
     retrieved = {p["doc_id"] for p in ev.passages}
     citations = [c for c in dict.fromkeys(draft.citations) if c in retrieved]
     dropped = [c for c in draft.citations if c not in retrieved]
@@ -246,24 +303,39 @@ def guard(draft: Draft, decision: Decision, ev: Evidence) -> GuardResult:
         flags.append(f"Removed citations to documents that were not retrieved: {', '.join(dropped)}")
 
     allowed = allowed_amounts(ev, decision)
-    unsupported = sorted({m.replace(",", "") for m in MONEY.findall(draft.reply)} - allowed)
+    unsupported = sorted({m.replace(",", "") for m in MONEY.findall(reply)} - allowed)
     if unsupported:
         flags.append(
             f"Reply mentions amounts not found in the evidence: {', '.join('$' + u for u in unsupported)}"
         )
 
-    personal = find_personal_data(draft.reply)
-    if REDACTION_TOKEN.search(draft.reply):
+    personal = find_personal_data(reply)
+    if REDACTION_TOKEN.search(reply):
         personal.append("a redaction token")
     if personal:
-        flags.append("Reply contains " + ", ".join(personal))
+        blocking.append("Reply contains " + ", ".join(personal))
 
-    leaked = [name for name in TOOL_NAMES if name in draft.reply]
+    leaked = [name for name in TOOL_NAMES if name in reply]
     if leaked:
-        flags.append(f"Reply mentions internal tool names: {', '.join(leaked)}")
+        blocking.append(f"Reply mentions internal tool names: {', '.join(leaked)}")
+
+    if CANARY in reply or any(_ngrams(reply) & _ngrams(p) for p in prompts):
+        blocking.append("Reply repeats the assistant's instructions")
+
+    passage_text = " ".join(p.get("text", "") for p in ev.passages)
+    links = [u.rstrip(".,;:!?") for u in URL.findall(reply)]
+    foreign = [u for u in links if not STORE_URL.match(u) and u not in passage_text]
+    if foreign:
+        blocking.append(f"Reply links outside the store: {', '.join(foreign)}")
+
+    blocking += _refund_claim_problems(reply, decision, ev)
 
     action = decision.action
     if action is Action.ANSWER and not draft.covered:
         action = Action.ESCALATE
         flags.append("The policies retrieved do not answer the question; escalated instead of answering.")
+    if blocking:
+        action = Action.ESCALATE
+        flags += blocking
+        flags.append("Draft not sent: escalated for a person to reply.")
     return GuardResult(citations=citations, flags=flags, action=action)

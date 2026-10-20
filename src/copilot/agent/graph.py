@@ -211,7 +211,7 @@ async def draft(state: State, runtime: Runtime[AgentContext]) -> State:
         state["ticket"], decision.action.value, decision.reason, _facts(ev, decision), ev.passages
     )
     result: Draft = await model.ainvoke([SystemMessage(prompts.DRAFT_SYSTEM), HumanMessage(content)])
-    checked = guard(result, decision, ev)
+    checked = guard(result, decision, ev, prompts=(prompts.DRAFT_SYSTEM, prompts.TRIAGE_SYSTEM))
     flags = list(state.get("flags", [])) + checked.flags
     proposal = None
 

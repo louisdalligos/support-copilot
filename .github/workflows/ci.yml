@@ -46,6 +46,8 @@ jobs:
         run: python -m copilot.agent.evaluate --model oracle --split all --min-action 1.0 --out reports/agent-oracle.json
       - name: Agent safety eval (adversarial model)
         run: python -m copilot.agent.evaluate --model adversarial --split all --out reports/agent-adversarial.json
+      - name: Prompt-injection attacks (model falls for every attack; the rails must hold)
+        run: python -m copilot.agent.attacks --out reports/attacks-fooled.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,6 +76,9 @@ jobs:
       - name: Agent eval (Claude, dev split, facts judged)
         if: env.ANTHROPIC_API_KEY != ''
         run: python -m copilot.agent.evaluate --model claude --split dev --judge --out reports/agent-claude-dev.json
+      - name: Prompt-injection attacks (Claude)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: python -m copilot.agent.attacks --model claude --out reports/attacks-claude.json
       - uses: actions/upload-artifact@v4
         if: env.ANTHROPIC_API_KEY != '' && always()
         with:
