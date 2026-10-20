@@ -2,6 +2,32 @@
 
 An AI support agent for a fictional online coffee store, Northwind Coffee Co. It reads customer tickets, answers from the store's policies and order data with citations, and proposes refunds for a human to approve.
 
+## Highlights
+
+- **An AI agent that works support tickets end to end.** A [LangGraph](https://langchain-ai.github.io/langgraph/) agent reads the ticket with Claude, looks up the order and the store's policies through three MCP servers built for it (Zendesk, Shopify, policy search), and drafts a cited reply. A person approves anything that reaches a customer or moves money.
+- **Measured with Claude.** On 36 labeled tickets, across two runs, it chose the right action and the right refund amount every time, with 0 unsafe outcomes. Replies contained 94–98% of the required facts.
+- **Safe when the model is wrong.** Refund decisions and amounts come from rules in code, and every draft is checked before a person sees it. Under a model that falls for every one of 16 prompt-injection attacks, all 16 are still contained.
+- **Retrieval with open models.** BM25, EmbeddingGemma embeddings and a bge reranker, all from Hugging Face, find a relevant policy in the top 5 for all 48 test questions.
+- **Built to run, not just to demo.** Evals and attack tests on every push, traces in Arize Phoenix, personal data redacted from logs and traces, and a live deployment on AWS: Terraform, a Graviton EC2 instance, ECR, S3 backups, Parameter Store, and GitHub Actions deploying every passing commit.
+
+## How it works
+
+```mermaid
+flowchart LR
+    ticket["Customer ticket<br/>(Zendesk)"] --> triage["Triage<br/>Claude Haiku"]
+    triage --> gather["Gather facts<br/>MCP tools"]
+    gather --> decide{"Decide<br/>rules in code"}
+    decide -->|answer, refund, decline| draft["Draft reply<br/>Claude Sonnet"]
+    draft --> guards["Check the draft<br/>guards in code"]
+    guards --> human["Person approves<br/>approval app"]
+    human -->|approved| out["Reply sent in Zendesk<br/>refund issued in Shopify"]
+    decide -->|escalate| team["Team queue"]
+    guards -->|blocked| team
+    gather -.- mcp["MCP servers<br/>Zendesk · Shopify · policy search"]
+```
+
+The model reads and writes; code decides. Each step is explained under [The agent](#the-agent).
+
 ## Live demo
 
 **[3-25-16-253.sslip.io](https://3-25-16-253.sslip.io)**: the approval app, running on AWS. Traces are at [phoenix.3-25-16-253.sslip.io](https://phoenix.3-25-16-253.sslip.io).
@@ -279,6 +305,8 @@ LangGraph                                   session: ticket-10301-…   metadata
 └─ approval       the pause; the decision is a second trace in the same session
 ```
 
+![A run of ticket 10301 in Phoenix: every step of the graph, its tool calls and policy searches, with the customer's name and email already replaced by tokens](docs/images/phoenix-trace.png)
+
 - **Standard instrumentation.** OpenInference's LangChain instrumentation turns LangGraph nodes, model calls and the MCP tools (loaded as LangChain tools) into OpenTelemetry spans; policy searches add a retriever span so Phoenix shows which passages came back and their scores. Spans go to Phoenix over OTLP/HTTP.
 - **One session per ticket run.** The draft and the person's later decision are separate traces tied by the run's thread id, so a slow or wrong decision can be followed from ticket to approval.
 - **Redacted before export.** An exporter wrapper runs every span attribute and event through `copilot.privacy` (JSON attributes are parsed and redacted field by field, so they stay valid JSON). Tests export spans over real OTLP/HTTP to a local collector and check the bytes on the wire for customer emails and names.
@@ -290,12 +318,27 @@ Tracing is on for the approval app and the agent CLI, and off with `COPILOT_TRAC
 
 Production is one VM running Docker Compose: the approval app, Postgres, Phoenix, [Caddy](https://caddyserver.com) and a backup job. It runs on AWS ([docs/aws.md](docs/aws.md)), or on any VM with Docker ([docs/deploy.md](docs/deploy.md)).
 
+```mermaid
+flowchart LR
+    push["git push to main"] --> ci["CI: tests, evals,<br/>attack suite, image"]
+    ci --> ghcr["GHCR<br/>amd64 + arm64 image"]
+    ci -->|passed| deploy["Deploy workflow"]
+    ghcr --> ecr["ECR<br/>tagged by commit"]
+    deploy --> ecr
+    deploy --> s3["S3<br/>release bundle"]
+    deploy --> ssm["SSM Run Command"]
+    ssm --> ec2["EC2 Graviton<br/>Caddy · app · Postgres · Phoenix"]
+    ecr --> ec2
+    tf["Terraform"] -.-> ec2
+    ec2 -.-> backups["S3<br/>nightly backups"]
+```
+
 - **One image.** The `Dockerfile` builds the approval app (with the agent and its MCP servers in-process), runs it as a non-root user, and checks `/healthz`. The open models are an optional build argument, so the default image stays small.
 - **CI builds, tests and publishes it.** On every push, CI builds the image, starts it, and drives it over HTTP: it runs the copilot on a ticket, checks the refund proposal appears, and checks that a form posted from another site is refused. On `main`, the image is pushed to GitHub Container Registry for amd64 and arm64.
 - **Only Caddy faces the internet.** It serves HTTPS with automatic Let's Encrypt certificates, puts sign-in in front of both the app and Phoenix, and passes the signed-in user to the app, which records them as the reviewer on every decision. Postgres and Phoenix are reachable only from the VM itself.
 - **Backups.** Both databases are dumped every 24 hours and kept for 7 days, with restore steps in the guide. On AWS they are also copied to S3 and kept for 30 days.
 - **AWS, as code.** Terraform creates a VPC, a Graviton EC2 instance with no SSH port (shells go through SSM Session Manager), ECR, an S3 bucket for backups, the app's settings and generated secrets in Parameter Store, a budget alert and self-healing CloudWatch alarms. CI checks the Terraform (`fmt`, `validate`) and the server scripts (`shellcheck`).
-- **Deploys without stored keys.** After CI passes on `main`, GitHub Actions signs in to AWS with OIDC, copies the tested image to ECR by commit SHA, and runs the deploy on the instance through SSM Run Command, then checks the site from the internet. Rolling back is running the same workflow with an older SHA.
+- **Deploys from GitHub Actions.** After CI passes on `main`, the deploy workflow signs in to AWS, copies the tested image to ECR by commit SHA, and runs the deploy on the instance through SSM Run Command, then checks the site from the internet. It signs in with OIDC (short-lived credentials, no stored keys) or, on accounts that cannot create an OIDC provider, as an IAM user that can only deploy. Rolling back is running the same workflow with an older SHA.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
