@@ -34,6 +34,8 @@ The model reads and writes; code decides. Each step is explained under [The agen
 
 Both are behind a sign-in. Ask me for it through my [GitHub profile](https://github.com/louisdalligos).
 
+![Demo: the copilot drafts a $45.35 refund for a double charge, a reviewer approves it, and the run appears as a trace in Phoenix](docs/images/demo.gif)
+
 What to try:
 
 1. Open **Tickets** and click **Run copilot** on a ticket. The agent reads it, looks up the order and the store's policies, decides what to do, and drafts a reply for you to review.
