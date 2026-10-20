@@ -14,8 +14,6 @@ copilot.policy. A model can ask for anything; only valid proposals get through.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
 
@@ -24,10 +22,18 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from copilot.audit import AuditLog
-from copilot.policy import Problem, check_refund, refundable_balance
+from copilot.policy import Problem
 from copilot.shopify.backend import FakeShopify, NotFound, ShopifyBackend
+from copilot.shopify.refunds import (
+    RefundError,
+    check_refund_request,
+    eligibility,
+    line_item,
+    money,
+    order_detail,
+    parse_amount,
+)
 
-CENT = Decimal("0.01")
 MAX_LIMIT = 50
 
 INSTRUCTIONS = """\
@@ -42,80 +48,6 @@ PROPOSE = ToolAnnotations(
 )
 
 
-def _money(value: Decimal) -> str:
-    return str(value.quantize(CENT))
-
-
-def _parse_amount(text: str) -> Decimal:
-    try:
-        amount = Decimal(text.strip().lstrip("$"))
-    except InvalidOperation:
-        raise ToolError(f"amount must be a number like 12.50, got {text!r}") from None
-    if not amount.is_finite() or amount <= 0:
-        raise ToolError("amount must be greater than zero")
-    if amount != amount.quantize(CENT):
-        raise ToolError("amount must have at most two decimal places")
-    return amount
-
-
-def payment_summary(
-    order: dict[str, Any], txs: list[dict[str, Any]], refunds: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """What was collected, refunded and still refundable, and whether the order was captured twice."""
-    captures = [t for t in txs if t["kind"] == "sale" and t["status"] == "success"]
-    failed = [t for t in txs if t["kind"] == "sale" and t["status"] == "failure"]
-    captured = sum((Decimal(t["amount"]) for t in captures), Decimal("0"))
-    refunded = sum((Decimal(r["amount"]) for r in refunds), Decimal("0"))
-    total = Decimal(order["total"])
-    overcharge = max(Decimal("0"), captured - total)
-    return {
-        "order_total": _money(total),
-        "captured": _money(captured),
-        "successful_charges": len(captures),
-        "failed_attempts": len(failed),
-        "failed_attempts_note": "Failed attempts collect no money; any hold they leave is released by the bank."
-        if failed
-        else None,
-        "duplicate_capture": len(captures) > 1 and overcharge > 0,
-        "overcharged": _money(overcharge),
-        "refunded": _money(refunded),
-        "refundable_balance": _money(refundable_balance(captured, refunded)),
-    }
-
-
-def _line_item(order: dict[str, Any], line_item_id: int) -> dict[str, Any]:
-    for item in order["line_items"]:
-        if item["id"] == line_item_id:
-            return item
-    ids = ", ".join(str(i["id"]) for i in order["line_items"])
-    raise ToolError(f"Order {order['name']} has no line item {line_item_id}; its items are {ids}")
-
-
-def _eligibility(
-    order: dict[str, Any], item: dict[str, Any], opened: bool, problem: Problem
-) -> dict[str, Any]:
-    delivered = order.get("delivered_at")
-    decision = check_refund(
-        item_type=item["product_type"],
-        delivered_on=date.fromisoformat(delivered) if delivered else None,
-        opened=opened,
-        problem=problem,
-        final_sale=item.get("final_sale", False),
-        shipped=order.get("shipped_at") is not None,
-    )
-    item_total = Decimal(item["price"]) * item["quantity"]
-    return {
-        "order": order["name"],
-        "line_item_id": item["id"],
-        "title": item["title"],
-        "outcome": decision.outcome.value,
-        "refundable": decision.refundable,
-        "reason": decision.reason,
-        "policy_doc": decision.policy_doc,
-        "max_amount": _money(item_total) if decision.refundable else None,
-    }
-
-
 def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **settings: Any) -> FastMCP:
     audit = audit or AuditLog("shopify")
     mcp = FastMCP("shopify", instructions=INSTRUCTIONS, **settings)
@@ -126,30 +58,17 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
         except NotFound as e:
             audit.record(tool, args, "not_found")
             raise ToolError(str(e)) from None
-        except ToolError as e:
+        except (ToolError, RefundError) as e:
             audit.record(tool, args, "rejected", str(e))
-            raise
+            raise ToolError(str(e)) from None
         audit.record(tool, args, "ok")
         return result
-
-    def order_detail(name: str) -> dict[str, Any]:
-        order = backend.order(name)
-        txs = backend.transactions(order["id"])
-        refunds = backend.refunds(order["id"])
-        return {
-            **order,
-            "payments": payment_summary(order, txs, refunds),
-            "transactions": txs,
-            "refunds": refunds,
-            "disputes": backend.disputes(order["id"]),
-            "refund_proposals": backend.proposals(order["id"]),
-        }
 
     @mcp.tool(title="Get order", annotations=READ)
     def get_order(order_name: str) -> dict[str, Any]:
         """Get an order by its number (like #1792): items, shipping and delivery dates, every payment
         attempt, refunds, disputes, and a payment summary that flags duplicate captures."""
-        return audited("get_order", {"order_name": order_name}, lambda: order_detail(order_name))
+        return audited("get_order", {"order_name": order_name}, lambda: order_detail(backend, order_name))
 
     @mcp.tool(title="Get customer", annotations=READ)
     def get_customer(email: str, order_limit: int = 10) -> dict[str, Any]:
@@ -184,7 +103,7 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
         Returns each charge's order, date, statement descriptor, card last 4 digits and status."""
 
         def run() -> list[dict[str, Any]]:
-            hits = backend.transactions_matching(_parse_amount(amount), limit=min(max(limit, 1), MAX_LIMIT))
+            hits = backend.transactions_matching(parse_amount(amount), limit=min(max(limit, 1), MAX_LIMIT))
             keep = ("order_name", "amount", "created_at", "descriptor", "card_last4", "status")
             return [{k: t[k] for k in keep} for t in hits]
 
@@ -204,7 +123,7 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
 
         def run() -> dict[str, Any]:
             order = backend.order(order_name)
-            return _eligibility(order, _line_item(order, line_item_id), opened, Problem(problem))
+            return eligibility(order, line_item(order, line_item_id), opened, Problem(problem))
 
         return audited("check_refund_eligibility", args, run)
 
@@ -235,51 +154,21 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
         }
 
         def run() -> dict[str, Any]:
-            value = _parse_amount(amount)
-            detail = order_detail(order_name)
-            pay = detail["payments"]
-            pending = sum(
-                (
-                    Decimal(p["amount"])
-                    for p in detail["refund_proposals"]
-                    if p["status"] == "pending_approval"
-                ),
-                Decimal("0"),
+            checked = check_refund_request(
+                backend,
+                order_name=order_name,
+                amount=amount,
+                reason=reason,
+                line_item_id=line_item_id,
+                opened=opened,
+                problem=problem,
             )
-            available = Decimal(pay["refundable_balance"]) - pending
-            if value > available:
-                raise ToolError(
-                    f"amount {_money(value)} is more than the {_money(max(available, Decimal('0')))} "
-                    "still refundable on this order (after refunds and pending proposals)"
-                )
-
-            policy = None
-            if reason == "duplicate_charge":
-                if not pay["duplicate_capture"]:
-                    raise ToolError(f"Order {detail['name']} was not captured more than once")
-                # Refunds already issued or proposed count against the excess, so the
-                # duplicate cannot be refunded twice.
-                excess_left = Decimal(pay["overcharged"]) - Decimal(pay["refunded"]) - pending
-                if value > excess_left:
-                    raise ToolError(
-                        f"amount is more than the {_money(max(excess_left, Decimal('0')))} charged in excess "
-                        "that is not already refunded or in a pending proposal"
-                    )
-            else:
-                if line_item_id is None or opened is None or problem is None:
-                    raise ToolError("item_refund needs line_item_id, opened and problem")
-                item = _line_item(detail, line_item_id)
-                policy = _eligibility(detail, item, opened, Problem(problem))
-                if not policy["refundable"]:
-                    raise ToolError(f"Policy does not allow this refund: {policy['reason']}")
-                if value > Decimal(policy["max_amount"]):
-                    raise ToolError(f"amount is more than the item's price, {policy['max_amount']}")
-
+            detail, value, policy = checked.order, checked.amount, checked.policy
             filed = backend.file_proposal(
                 {
                     "order_id": detail["id"],
                     "order_name": detail["name"],
-                    "amount": _money(value),
+                    "amount": money(value),
                     "reason": reason,
                     "ticket_id": ticket_id,
                     "line_item_id": line_item_id,
@@ -296,7 +185,7 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
     def order_resource(order_number: str) -> dict[str, Any]:
         """One order with payments, refunds and disputes. Use the number without '#', like 1792."""
         try:
-            return order_detail(order_number)
+            return order_detail(backend, order_number)
         except NotFound as e:
             raise ValueError(str(e)) from None
 

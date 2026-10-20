@@ -1,0 +1,84 @@
+"""Run the approval app.
+
+    python -m copilot.approvals                    # http://127.0.0.1:8000, Claude, Postgres from .env
+    python -m copilot.approvals --model oracle     # offline: reads the eval labels instead of calling Claude
+    python -m copilot.approvals --memory           # keep runs in memory instead of Postgres
+
+With Postgres (docker compose up -d, POSTGRES_PASSWORD in .env), paused runs and
+the queue survive restarts. The fake Zendesk and Shopify data is reloaded from
+the seed files on every start, so replies and refunds sent in an earlier session
+are not shown after a restart.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def main() -> int:
+    from copilot.agent.__main__ import _models, load_dotenv
+
+    load_dotenv()
+    parser = argparse.ArgumentParser(
+        prog="python -m copilot.approvals",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--model", choices=["claude", "oracle"], default="claude")
+    parser.add_argument("--memory", action="store_true", help="do not use Postgres")
+    parser.add_argument("--rag-models", action="store_true", help="dense search and reranker for policies")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    import uvicorn
+
+    from copilot.approvals.service import ApprovalService, Backends
+    from copilot.approvals.storage import database_url, open_storage
+    from copilot.approvals.web import create_app
+    from copilot.kb import load_kb
+    from copilot.rag.retriever import Retriever
+    from copilot.shopify.backend import FakeShopify
+    from copilot.zendesk.backend import FakeZendesk
+
+    triage_m, draft_m = _models(args.model)
+    url = None if args.memory else database_url()
+    if url is None and not args.memory:
+        print("No database configured (POSTGRES_PASSWORD or COPILOT_DATABASE_URL); keeping runs in memory.")
+
+    def retriever() -> Retriever:
+        docs = load_kb(ROOT / "data" / "kb")
+        if not args.rag_models:
+            return Retriever(docs)
+        from copilot.rag.models import CrossEncoderReranker, SentenceTransformerEmbedder
+
+        return Retriever(docs, embedder=SentenceTransformerEmbedder(), reranker=CrossEncoderReranker())
+
+    @asynccontextmanager
+    async def open_service() -> AsyncIterator[tuple[ApprovalService, str]]:
+        data = ROOT / "data" / "generated"
+        backends = Backends(FakeZendesk.from_generated(data), FakeShopify.from_generated(data), retriever())
+        async with open_storage(url) as storage:
+            yield (
+                ApprovalService(backends, storage.checkpointer, storage.store, triage_m, draft_m),
+                storage.kind,
+            )
+
+    app = create_app(open_service=open_service, model_name=args.model)
+    server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level="info"))
+    print(f"Approval app on http://{args.host}:{args.port}")
+    # psycopg's async driver cannot use Windows' default event loop, so pick the selector loop there.
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
+    asyncio.run(server.serve(), loop_factory=loop_factory)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

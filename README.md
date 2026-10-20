@@ -9,8 +9,8 @@ It is a portfolio project, built to show production AI engineering end to end: R
 | Phase | What | State |
 | --- | --- | --- |
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
-| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | In progress: servers, RAG and agent done; Claude eval next |
-| 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | |
+| 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** (Claude eval run pending) |
+| 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | In progress: durable approvals and approval app done |
 | 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
 
@@ -27,6 +27,7 @@ src/copilot/zendesk/   Zendesk MCP server and its fake backend
 src/copilot/shopify/   Shopify MCP server and its fake backend
 src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
 src/copilot/agent/     the LangGraph agent, its rules, guards, evals and command line
+src/copilot/approvals/ the approval app: durable runs in Postgres, review pages, sending and refunds
 src/copilot/audit.py   audit log of every tool call, with emails redacted
 tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
@@ -156,6 +157,28 @@ python -m copilot.agent run 10301                     # with Claude; asks you to
 python -m copilot.agent.evaluate --model claude --split dev --judge
 ```
 
+## The approval app
+
+Where a person reviews what the agent drafted, edits the reply if needed, and approves or rejects it.
+
+![Approval queue](docs/images/approval-queue.png)
+
+![Reviewing a refund proposal](docs/images/approval-review.png)
+
+- **Durable.** Each ticket run is a LangGraph thread. It pauses at the approval interrupt, and the Postgres checkpointer (`langgraph-checkpoint-postgres`) keeps it in the `checkpoints` schema, so a draft waiting for approval survives restarts and deploys. The queue is kept in the LangGraph store, in the `app` schema. A test restarts the service against a real Postgres (in CI too) and approves a run that was paused before the restart.
+- **Separation of powers.** The agent's MCP tools cannot reply to customers or refund anything. Only this app can, acting for the person who clicks approve: it posts the reply to Zendesk and issues the refund in Shopify, and records who approved it.
+- **Checked twice.** A refund is checked against the order again at approval time, with the same code the Shopify MCP server uses. If someone refunded the order by hand while the draft was waiting, approval is refused instead of refunding twice.
+- **Safe display.** Ticket text is escaped on every page, so an HTML comment hidden in a ticket (one of the prompt-injection evals) shows up as text, not markup.
+- **Each run decided once.** A run can be approved or rejected only once; a second attempt is refused.
+
+```bash
+docker compose up -d                          # Postgres (and Phoenix)
+python -m copilot.approvals --model oracle    # http://127.0.0.1:8000, offline
+python -m copilot.approvals                   # with Claude (needs ANTHROPIC_API_KEY)
+```
+
+The fake Zendesk and Shopify data reloads from the seed files on each start, so replies and refunds from an earlier session are gone after a restart; the paused runs and the queue are kept.
+
 ## Getting started (Windows)
 
 Requires Python 3.11+ and Docker Desktop.
@@ -186,6 +209,7 @@ In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead
 - **Splits by scenario.** Two phrasings of the same scenario always land in the same split, so the held-out test set is really held out.
 - **Committed, reproducible data.** CI regenerates the data and fails if the committed files differ.
 - **The model reads and writes; code decides.** Actions and refund amounts come from rules; the model's draft is checked before a person sees it.
+- **Only people send and refund.** The agent drafts and proposes; the approval app sends and refunds after a person approves, re-checking the refund first.
 - **One Postgres.** Knowledge base, approvals, job queue, LangGraph checkpoints and Phoenix all use one Postgres instance, with separate schemas.
 
 ## License

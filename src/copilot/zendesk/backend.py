@@ -37,6 +37,9 @@ class ZendeskBackend(Protocol):
     def add_internal_note(self, ticket_id: int, body: str, author: str) -> dict[str, Any]: ...
     def add_tags(self, ticket_id: int, tags: list[str]) -> list[str]: ...
     def set_priority(self, ticket_id: int, priority: str) -> str: ...
+    # Used only by the approval app, after a person approves. Not exposed through MCP.
+    def add_public_reply(self, ticket_id: int, body: str, author: str) -> dict[str, Any]: ...
+    def set_status(self, ticket_id: int, status: str) -> str: ...
 
 
 def _now() -> str:
@@ -125,3 +128,15 @@ class FakeZendesk:
         ticket = self._ticket(ticket_id)
         ticket["priority"] = priority
         return priority
+
+    def add_public_reply(self, ticket_id: int, body: str, author: str) -> dict[str, Any]:
+        ticket = self._ticket(ticket_id)
+        reply = {"author": author, "public": True, "created_at": _now(), "body": body}
+        ticket["comments"].append(reply)
+        return copy.deepcopy(reply)
+
+    def set_status(self, ticket_id: int, status: str) -> str:
+        if status not in STATUSES:
+            raise ValueError(f"status must be one of {', '.join(STATUSES)}")
+        self._ticket(ticket_id)["status"] = status
+        return status

@@ -32,6 +32,11 @@ class ShopifyBackend(Protocol):
     def transactions_matching(self, amount: Decimal, *, limit: int) -> list[dict[str, Any]]: ...
     def file_proposal(self, proposal: dict[str, Any]) -> dict[str, Any]: ...
     def proposals(self, order_id: int | None = None) -> list[dict[str, Any]]: ...
+    # Used only by the approval app, after a person approves. Not exposed through MCP.
+    def issue_refund(
+        self, order_name: str, amount: Decimal, note: str, proposal_id: int | None = None
+    ) -> dict[str, Any]: ...
+    def close_proposal(self, proposal_id: int, status: str) -> None: ...
 
 
 def order_key(name: str) -> str:
@@ -118,3 +123,42 @@ class FakeShopify:
     def proposals(self, order_id: int | None = None) -> list[dict[str, Any]]:
         rows = [p for p in self._proposals if order_id is None or p["order_id"] == order_id]
         return copy.deepcopy(rows)
+
+    def issue_refund(
+        self, order_name: str, amount: Decimal, note: str, proposal_id: int | None = None
+    ) -> dict[str, Any]:
+        """Refund money on an order. Callers must check the refund first (copilot.shopify.refunds)."""
+        order = self._orders[order_key(order_name)]
+        sale = next(
+            t for t in self._tx.get(order["id"], []) if t["kind"] == "sale" and t["status"] == "success"
+        )
+        all_refunds = [r for rows in self._refunds.values() for r in rows]
+        refund = {
+            "id": max((r["id"] for r in all_refunds), default=30000) + 1,
+            "order_id": order["id"],
+            "transaction_id": sale["id"],
+            "amount": str(amount.quantize(Decimal("0.01"))),
+            "note": note,
+            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        self._refunds.setdefault(order["id"], []).append(refund)
+        refunded = sum((Decimal(r["amount"]) for r in self._refunds[order["id"]]), Decimal("0"))
+        collected = sum(
+            (
+                Decimal(t["amount"])
+                for t in self._tx.get(order["id"], [])
+                if t["kind"] == "sale" and t["status"] == "success"
+            ),
+            Decimal("0"),
+        )
+        # Compare with what was collected, not the order total: refunding a duplicate
+        # capture leaves the order paid once, so it is partially refunded.
+        order["financial_status"] = "refunded" if refunded >= collected else "partially_refunded"
+        if proposal_id is not None:
+            self.close_proposal(proposal_id, "approved")
+        return copy.deepcopy(refund)
+
+    def close_proposal(self, proposal_id: int, status: str) -> None:
+        for p in self._proposals:
+            if p["id"] == proposal_id:
+                p["status"] = status
