@@ -49,7 +49,7 @@ def main() -> int:
     from copilot.approvals.web import create_app
     from copilot.kb import load_kb
     from copilot.rag.retriever import Retriever
-    from copilot.shopify.backend import FakeShopify
+    from copilot.shopify.backend import connect as connect_shopify
     from copilot.zendesk.backend import FakeZendesk
 
     triage_m, draft_m = _models(args.model)
@@ -68,7 +68,7 @@ def main() -> int:
     @asynccontextmanager
     async def open_service() -> AsyncIterator[tuple[ApprovalService, str]]:
         data = ROOT / "data" / "generated"
-        backends = Backends(FakeZendesk.from_generated(data), FakeShopify.from_generated(data), retriever())
+        backends = Backends(FakeZendesk.from_generated(data), connect_shopify(data), retriever())
         async with open_storage(url) as storage:
             yield (
                 ApprovalService(backends, storage.checkpointer, storage.store, triage_m, draft_m),

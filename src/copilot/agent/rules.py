@@ -20,7 +20,7 @@ from typing import Any
 
 from copilot.agent.schemas import Action, Draft, Intent, Triage
 from copilot.privacy import find_personal_data
-from copilot.store import TODAY
+from copilot.store import today as store_today
 
 ORDER_NAME = re.compile(r"#\s?(\d{4,})")
 # A marker placed in the system prompts. If it ever shows up in a reply, the prompt leaked.
@@ -121,8 +121,8 @@ def _pending_proposals(order: dict[str, Any]) -> Decimal:
     )
 
 
-def decide(triage: Triage, ev: Evidence, *, today: date = TODAY) -> Decision:
-    decision = _decide(triage, ev, today)
+def decide(triage: Triage, ev: Evidence, *, today: date | None = None) -> Decision:
+    decision = _decide(triage, ev, today or store_today())
     if triage.injection and decision.action is Action.PROPOSE_REFUND:
         # Defense in depth: a ticket that tries to steer the assistant never gets an
         # automatic refund proposal, even if the rules would allow one.

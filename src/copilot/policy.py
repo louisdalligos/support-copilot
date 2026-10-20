@@ -16,8 +16,10 @@ from copilot.store import (
     DAMAGE_REPORT_DAYS,
     DEFECTIVE_COFFEE_DAYS,
     REFUND_WINDOW_DAYS,
-    TODAY,
     WARRANTY_DAYS,
+)
+from copilot.store import (
+    today as store_today,
 )
 
 
@@ -53,7 +55,7 @@ def check_refund(
     problem: Problem,
     final_sale: bool = False,
     shipped: bool = True,
-    today: date = TODAY,
+    today: date | None = None,
 ) -> RefundDecision:
     """Decide whether one item may be refunded under the current refund policy.
 
@@ -81,7 +83,7 @@ def check_refund(
             "damaged-or-lost-orders",
         )
 
-    days = (today - delivered_on).days
+    days = ((today or store_today()) - delivered_on).days
 
     if problem in (Problem.DAMAGED, Problem.WRONG_ITEM):
         if days <= DAMAGE_REPORT_DAYS:

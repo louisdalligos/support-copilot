@@ -166,3 +166,24 @@ def test_audit_log_has_no_personal_data():
     leaks = [c["email"] for c in CUSTOMERS if c["email"] in log]
     leaks += [c["first_name"] for c in CUSTOMERS if f" {c['first_name']} " in log]
     assert not leaks, leaks[:5]
+
+
+def test_access_log_keeps_its_arguments():
+    """uvicorn's access formatter unpacks record.args; redaction must not replace them with None."""
+    import logging
+
+    from copilot.privacy import RedactingFilter
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("203.0.113.7:51344", "GET", "/", "1.1", 200),
+        None,
+    )
+    assert RedactingFilter().filter(record)
+    client, method, path, version, status = record.args
+    assert client.startswith("[IP:") and (method, path, status) == ("GET", "/", 200)
+    assert "203.0.113.7" not in record.getMessage()

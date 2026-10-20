@@ -7,6 +7,7 @@ in data/kb state the same facts in prose; tests/test_kb.py checks they agree.
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from decimal import Decimal
 
@@ -15,6 +16,15 @@ SUPPORT_EMAIL = "support@northwind-coffee.example"
 
 # A fixed "today" so refund windows, ticket ages and eval labels never drift.
 TODAY = date(2026, 10, 15)
+
+
+def today() -> date:
+    """The store's date: the fixed TODAY with the seed data, the real date with a live store
+    (COPILOT_SHOPIFY=live, or COPILOT_CLOCK=real), whose orders have real dates."""
+    if os.environ.get("COPILOT_CLOCK") == "real" or os.environ.get("COPILOT_SHOPIFY") == "live":
+        return date.today()
+    return TODAY
+
 
 # The current policies took effect on this date; earlier orders used the v1 policies.
 POLICY_V2_DATE = date(2026, 3, 1)

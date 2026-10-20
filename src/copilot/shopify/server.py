@@ -23,7 +23,7 @@ from mcp.types import ToolAnnotations
 
 from copilot.audit import AuditLog
 from copilot.policy import Problem
-from copilot.shopify.backend import FakeShopify, NotFound, ShopifyBackend
+from copilot.shopify.backend import NotFound, ShopifyBackend, connect
 from copilot.shopify.refunds import (
     RefundError,
     check_refund_request,
@@ -206,4 +206,4 @@ def default_data_dir() -> Path:
 
 
 def build_default_server(data_dir: Path | None = None, **settings: Any) -> FastMCP:
-    return build_server(FakeShopify.from_generated(data_dir or default_data_dir()), **settings)
+    return build_server(connect(data_dir or default_data_dir()), **settings)

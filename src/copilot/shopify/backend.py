@@ -1,8 +1,9 @@
 """Shopify backends.
 
 The MCP server talks to a ShopifyBackend. FakeShopify serves the seed data in
-memory. A backend for the real Shopify Admin API implements the same
-interface later, so the server does not change.
+memory; LiveShopify (copilot.shopify.live) talks to a real store through the Admin
+API. Both return the same shapes, so the server does not change. connect() picks
+one: the live store when COPILOT_SHOPIFY=live, the seed data otherwise.
 
 Refunds are never issued here. The agent can only file a refund proposal,
 which waits for a person to approve it.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -162,3 +164,12 @@ class FakeShopify:
         for p in self._proposals:
             if p["id"] == proposal_id:
                 p["status"] = status
+
+
+def connect(data_dir: Path) -> ShopifyBackend:
+    """The live store when COPILOT_SHOPIFY=live, otherwise the seed data in data_dir."""
+    if os.environ.get("COPILOT_SHOPIFY") == "live":
+        from copilot.shopify.live import LiveShopify
+
+        return LiveShopify.from_env()
+    return FakeShopify.from_generated(data_dir)

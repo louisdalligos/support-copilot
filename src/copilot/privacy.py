@@ -214,7 +214,19 @@ class RedactingFilter(logging.Filter):
     """A logging filter that redacts each record's message before any handler writes it."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        message = record.getMessage()
+        # Redact the format string and each string argument in place, so formatters that
+        # read record.args themselves (uvicorn's access log unpacks them) keep working.
+        if isinstance(record.msg, str):
+            record.msg = redact_text(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(redact_text(a) if isinstance(a, str) else a for a in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {k: redact_text(v) if isinstance(v, str) else v for k, v in record.args.items()}
+        # Anything still left (personal data inside a non-string argument): flatten the message.
+        try:
+            message = record.getMessage()
+        except (TypeError, ValueError):
+            return True
         redacted = redact_text(message)
         if redacted != message:
             record.msg, record.args = redacted, None

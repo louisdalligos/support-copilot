@@ -96,7 +96,7 @@ async def load_ticket(state: State, runtime: Runtime[AgentContext]) -> State:
 async def triage(state: State, runtime: Runtime[AgentContext]) -> State:
     model = runtime.context.triage_model.with_structured_output(Triage)
     result: Triage = await model.ainvoke(
-        [SystemMessage(prompts.TRIAGE_SYSTEM), HumanMessage(prompts.ticket_block(state["ticket"]))]
+        [SystemMessage(prompts.triage_system()), HumanMessage(prompts.ticket_block(state["ticket"]))]
     )
     # An order number written in the ticket is read by code; the model's reading is the fallback.
     text = " ".join(c.get("customer_text", "") for c in state["ticket"]["comments"])
@@ -213,8 +213,9 @@ async def draft(state: State, runtime: Runtime[AgentContext]) -> State:
     content = prompts.draft_input(
         state["ticket"], decision.action.value, decision.reason, _facts(ev, decision), ev.passages
     )
-    result: Draft = await model.ainvoke([SystemMessage(prompts.DRAFT_SYSTEM), HumanMessage(content)])
-    checked = guard(result, decision, ev, prompts=(prompts.DRAFT_SYSTEM, prompts.TRIAGE_SYSTEM))
+    system = prompts.draft_system()
+    result: Draft = await model.ainvoke([SystemMessage(system), HumanMessage(content)])
+    checked = guard(result, decision, ev, prompts=(system, prompts.triage_system()))
     flags = list(state.get("flags", [])) + checked.flags
     proposal = None
 
