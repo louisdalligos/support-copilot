@@ -3,14 +3,20 @@
 LiveZendesk implements the same ZendeskBackend interface as FakeZendesk and returns
 the same shapes, so the MCP server, the agent and the approval app do not change.
 
-Sign-in uses an API token: HTTP basic auth with "{agent email}/token" and the token.
-The agent's writes (internal notes, tags, priority) and the approval app's public
-replies are made as that agent.
+Sign-in uses OAuth with the client credentials grant: a confidential OAuth client's
+identifier and secret are exchanged for a bearer token (30 minutes by default), which
+is renewed before it expires or when Zendesk answers "invalid_token". Zendesk is
+retiring API tokens (no new ones from 2026-10-27, all stop on 2027-04-30), and this is
+the grant it recommends for server-to-server work.
+
+Zendesk records everything done with the client's tokens as the user who created the
+client, so the copilot's internal notes and the approved replies appear under that name.
 
 Settings (environment variables):
-    ZENDESK_SUBDOMAIN     the part before .zendesk.com
-    ZENDESK_EMAIL         the agent the API token belongs to
-    ZENDESK_API_TOKEN     Admin Center > Apps and integrations > Zendesk API
+    ZENDESK_SUBDOMAIN        the part before .zendesk.com
+    ZENDESK_CLIENT_ID        Admin Center > Apps and integrations > APIs > OAuth clients
+    ZENDESK_CLIENT_SECRET    (a Confidential client; the secret is shown once)
+    ZENDESK_SCOPES           optional, default "read write"
 """
 
 from __future__ import annotations
@@ -42,25 +48,64 @@ def subdomain_of(value: str) -> str:
 
 
 class ZendeskClient:
-    def __init__(self, subdomain: str, email: str, token: str, *, http: httpx.Client | None = None) -> None:
-        self.base = f"https://{subdomain_of(subdomain)}.zendesk.com/api/v2"
+    """Signs in with client credentials and sends API requests."""
+
+    def __init__(
+        self,
+        subdomain: str,
+        client_id: str,
+        client_secret: str,
+        *,
+        scopes: str = "read write",
+        http: httpx.Client | None = None,
+    ) -> None:
+        self.site = f"https://{subdomain_of(subdomain)}.zendesk.com"
+        self.base = f"{self.site}/api/v2"
         self._http = http or httpx.Client(timeout=30)
-        self._auth = (f"{email.strip()}/token", token.strip())
+        self._client = {"client_id": client_id.strip(), "client_secret": client_secret.strip()}
+        self.scopes = scopes
+        self._token: str | None = None
+        self._expires = 0.0
 
     @classmethod
     def from_env(cls) -> ZendeskClient:
-        missing = [
-            k for k in ("ZENDESK_SUBDOMAIN", "ZENDESK_EMAIL", "ZENDESK_API_TOKEN") if not os.environ.get(k)
-        ]
+        keys = ("ZENDESK_SUBDOMAIN", "ZENDESK_CLIENT_ID", "ZENDESK_CLIENT_SECRET")
+        missing = [k for k in keys if not os.environ.get(k)]
         if missing:
             raise SystemExit(f"Live Zendesk needs {', '.join(missing)} (see docs/zendesk.md).")
         return cls(
-            os.environ["ZENDESK_SUBDOMAIN"], os.environ["ZENDESK_EMAIL"], os.environ["ZENDESK_API_TOKEN"]
+            os.environ["ZENDESK_SUBDOMAIN"],
+            os.environ["ZENDESK_CLIENT_ID"],
+            os.environ["ZENDESK_CLIENT_SECRET"],
+            scopes=os.environ.get("ZENDESK_SCOPES") or "read write",
         )
 
+    def token(self, *, renew: bool = False) -> str:
+        """A bearer token, fetched again a minute before it expires (there is no refresh token)."""
+        if renew or not self._token or time.monotonic() > self._expires - 60:
+            r = self._http.post(
+                f"{self.site}/oauth/tokens",
+                data={"grant_type": "client_credentials", "scope": self.scopes, **self._client},
+            )
+            if r.status_code >= 400:
+                raise ZendeskError(
+                    f"Zendesk sign-in failed ({r.status_code}): {r.text[:300]}. "
+                    "Check ZENDESK_SUBDOMAIN and the OAuth client's identifier, secret and kind (Confidential)."
+                )
+            body = r.json()
+            self._token = body["access_token"]
+            self._expires = time.monotonic() + float(body.get("expires_in") or 1800)
+        return self._token  # type: ignore[return-value]
+
     def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        renewed = False
         for attempt in range(4):
-            r = self._http.request(method, f"{self.base}{path}", auth=self._auth, **kwargs)
+            headers = {"Authorization": f"Bearer {self.token()}"}
+            r = self._http.request(method, f"{self.base}{path}", headers=headers, **kwargs)
+            if r.status_code == 401 and not renewed:  # expired or revoked: sign in again once
+                self.token(renew=True)
+                renewed = True
+                continue
             if r.status_code == 429:
                 if attempt == 3:
                     break

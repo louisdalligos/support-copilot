@@ -29,6 +29,18 @@ class FakeAPI:
         self.calls: list[tuple[str, str, Any]] = []
         self.limit_next = 0
         self.next_id = 1
+        self.sign_ins: list[dict[str, str]] = []
+        self.valid_token = ""
+
+    def sign_in(self, request: httpx.Request) -> httpx.Response:
+        form = dict(httpx.QueryParams(request.content.decode()))
+        self.sign_ins.append(form)
+        if (form.get("client_id"), form.get("client_secret")) != ("cid", "secret"):
+            return httpx.Response(401, json={"error": "invalid_client"})
+        self.valid_token = f"token-{len(self.sign_ins)}"
+        return httpx.Response(
+            200, json={"access_token": self.valid_token, "token_type": "bearer", "expires_in": 1800}
+        )
 
     def add(self, subject: str, body: str, requester: int = CUSTOMER["id"], **extra: Any) -> int:
         tid = self.next_id
@@ -52,10 +64,13 @@ class FakeAPI:
         return tid
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/tokens":
+            return self.sign_in(request)
         path, method = request.url.path.removeprefix("/api/v2"), request.method
         body = json.loads(request.content) if request.content else None
         self.calls.append((method, path, body))
-        assert request.headers["authorization"].startswith("Basic ")
+        if request.headers.get("authorization") != f"Bearer {self.valid_token}":
+            return httpx.Response(401, json={"error": "invalid_token"})
         if self.limit_next:
             self.limit_next -= 1
             return httpx.Response(429, headers={"Retry-After": "0"})
@@ -147,10 +162,8 @@ def api() -> FakeAPI:
     return FakeAPI()
 
 
-def client(api: FakeAPI) -> ZendeskClient:
-    return ZendeskClient(
-        "acme", "agent@example.com", "tok", http=httpx.Client(transport=httpx.MockTransport(api))
-    )
+def client(api: FakeAPI, secret: str = "secret") -> ZendeskClient:
+    return ZendeskClient("acme", "cid", secret, http=httpx.Client(transport=httpx.MockTransport(api)))
 
 
 def desk(api: FakeAPI) -> LiveZendesk:
@@ -163,9 +176,27 @@ def test_subdomain_accepts_urls_and_hosts():
     assert subdomain_of("https://acme.zendesk.com/agent/tickets/1") == "acme"
 
 
-def test_auth_uses_api_token(api):
-    c = client(api)
-    assert c._auth == ("agent@example.com/token", "tok")
+def test_signs_in_with_client_credentials_once(api):
+    api.add("Hi", "hello")
+    z = desk(api)
+    z.get(1)
+    z.get(1)
+    assert len(api.sign_ins) == 1
+    assert api.sign_ins[0] | {"grant_type": "client_credentials", "scope": "read write"} == api.sign_ins[0]
+
+
+def test_signs_in_again_when_the_token_is_refused(api):
+    api.add("Hi", "hello")
+    z = desk(api)
+    z.get(1)
+    api.valid_token = "revoked-elsewhere"
+    assert z.get(1)["id"] == 1
+    assert len(api.sign_ins) == 2
+
+
+def test_bad_client_credentials_are_explained(api):
+    with pytest.raises(ZendeskError, match="sign-in failed.*Confidential"):
+        LiveZendesk(client(api, secret="wrong")).get(1)
 
 
 def test_get_returns_the_fake_shape_with_every_comment(api):
@@ -249,13 +280,13 @@ def test_connect_picks_the_backend(monkeypatch):
     monkeypatch.delenv("COPILOT_ZENDESK", raising=False)
     assert isinstance(connect(default_data_dir()), FakeZendesk)
     monkeypatch.setenv("COPILOT_ZENDESK", "live")
-    for key in ("ZENDESK_SUBDOMAIN", "ZENDESK_EMAIL", "ZENDESK_API_TOKEN"):
+    for key in ("ZENDESK_SUBDOMAIN", "ZENDESK_CLIENT_ID", "ZENDESK_CLIENT_SECRET"):
         monkeypatch.delenv(key, raising=False)
     with pytest.raises(SystemExit, match="ZENDESK_SUBDOMAIN"):
         connect(default_data_dir())
     monkeypatch.setenv("ZENDESK_SUBDOMAIN", "acme")
-    monkeypatch.setenv("ZENDESK_EMAIL", "a@example.com")
-    monkeypatch.setenv("ZENDESK_API_TOKEN", "t")
+    monkeypatch.setenv("ZENDESK_CLIENT_ID", "cid")
+    monkeypatch.setenv("ZENDESK_CLIENT_SECRET", "s")
     assert isinstance(connect(default_data_dir()), LiveZendesk)
 
 

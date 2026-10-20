@@ -4,14 +4,19 @@ By default the copilot reads the seed tickets. With `COPILOT_ZENDESK=live` it us
 
 With a webhook, the copilot also starts on its own: Zendesk calls the approval app when a ticket is created, and the draft is waiting in the queue a few seconds later.
 
-## 1. An account and an API token
+## 1. An account and an OAuth client
 
 A Zendesk trial lasts 14 days, so finish steps 2 and 3 on your own machine first and keep the trial for the parts that need it.
 
 1. Start a free Zendesk trial. The subdomain you choose is the `acme` in `acme.zendesk.com`.
-2. **Admin Center** > **Apps and integrations** > **APIs** > **API tokens**: turn token access on, add a token and copy it. It is shown once.
+2. **Admin Center** > **Apps and integrations** > **APIs** > **OAuth clients** > **Add OAuth client**:
+   - **Client kind:** Confidential
+   - **Redirect URLs:** none needed
+   - Save, then copy the **Identifier** and the **Secret**. The secret is shown once.
 
-The copilot signs in with the email of the agent who owns the token plus the token (HTTP basic auth, `email/token:token`). Internal notes and approved replies appear under that agent's name.
+The copilot signs in with the OAuth client credentials grant: it exchanges the identifier and secret at `https://acme.zendesk.com/oauth/tokens` for a bearer token that lasts 30 minutes, and gets a new one before it expires. Zendesk is retiring API tokens (no new ones from 27 October 2026, and the rest stop working on 30 April 2027), and recommends this grant for server-to-server integrations.
+
+Zendesk records everything done with the client's tokens as the user who created the client. On a trial that is you, so the copilot's internal notes and the approved replies appear under your name. On a real account, create the client from a dedicated agent such as "Support Copilot".
 
 ## 2. Settings
 
@@ -20,8 +25,9 @@ In `.env` (git-ignored):
 ```bash
 COPILOT_ZENDESK=live
 ZENDESK_SUBDOMAIN=acme
-ZENDESK_EMAIL=agent@example.com
-ZENDESK_API_TOKEN=...
+ZENDESK_CLIENT_ID=...
+ZENDESK_CLIENT_SECRET=...
+# ZENDESK_SCOPES=read write   # the default
 ```
 
 The demo tickets refer to orders in the Shopify demo store, so use the live Zendesk account together with the live Shopify store ([docs/shopify.md](shopify.md)).
@@ -83,8 +89,8 @@ The server builds its `.env` from the SSM parameters under `/support-copilot/pro
 p=/support-copilot/prod
 aws ssm put-parameter --name $p/COPILOT_ZENDESK --type String --value live --overwrite
 aws ssm put-parameter --name $p/ZENDESK_SUBDOMAIN --type String --value acme --overwrite
-aws ssm put-parameter --name $p/ZENDESK_EMAIL --type SecureString --value 'agent@example.com' --overwrite
-aws ssm put-parameter --name $p/ZENDESK_API_TOKEN --type SecureString --value '...' --overwrite
+aws ssm put-parameter --name $p/ZENDESK_CLIENT_ID --type SecureString --value '...' --overwrite
+aws ssm put-parameter --name $p/ZENDESK_CLIENT_SECRET --type SecureString --value '...' --overwrite
 aws ssm put-parameter --name $p/ZENDESK_WEBHOOK_SECRET --type SecureString --value '...' --overwrite
 # and the Shopify settings from docs/shopify.md, with COPILOT_SHOPIFY=live
 gh workflow run deploy.yml

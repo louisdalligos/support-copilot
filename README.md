@@ -160,6 +160,8 @@ The public demo stays on the seed data, which resets on every restart, so every 
 
 With `COPILOT_ZENDESK=live`, the Zendesk server talks to a real Zendesk account through the Support API ([docs/zendesk.md](docs/zendesk.md)).
 
+- **Signs in with OAuth client credentials:** a confidential OAuth client's identifier and secret are exchanged for a short-lived bearer token, renewed before it expires. Zendesk is retiring API tokens, and this is the grant it recommends for server-to-server work.
+
 - **Same tickets, same tools:** tickets, comments and requesters are read into the shapes the agent already uses. The draft goes on the ticket as an internal note; the reply is posted only after a person approves.
 - **Starts on its own:** a Zendesk trigger calls `POST /webhooks/zendesk` when a ticket is created. The app checks Zendesk's HMAC signature and the timestamp (stale or unsigned requests get 401), skips tickets that already have a run so retries never draft twice, answers 202 and runs the copilot in the background.
 - **Demo data:** `python -m copilot.zendesk.demo_desk setup` imports the demo tickets with their customers through the ticket import API, which does not fire triggers; `demo_desk send 10301` creates a new ticket the normal way, so the webhook fires.

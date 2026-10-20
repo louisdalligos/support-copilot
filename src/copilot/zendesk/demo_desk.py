@@ -17,7 +17,7 @@ real ticket arrives.
 Zendesk gives tickets its own ids. Each demo ticket carries its seed id in
 external_id ("northwind-10301") and the tag northwind-demo.
 
-Needs ZENDESK_SUBDOMAIN, ZENDESK_EMAIL and ZENDESK_API_TOKEN (see docs/zendesk.md).
+Needs ZENDESK_SUBDOMAIN, ZENDESK_CLIENT_ID and ZENDESK_CLIENT_SECRET (see docs/zendesk.md).
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class DemoDesk:
         self._me: int | None = None
 
     def me(self) -> int:
-        """The agent the API token belongs to; agent comments are imported as theirs."""
+        """The user who owns the OAuth client; agent comments are imported as theirs."""
         if self._me is None:
             self._me = self.client.request("GET", "/users/me.json")["user"]["id"]
         return self._me
