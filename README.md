@@ -10,7 +10,7 @@ It is a portfolio project, built to show production AI engineering end to end: R
 | --- | --- | --- |
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** (Claude eval run pending) |
-| 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | In progress: durable approvals and approval app done |
+| 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | In progress: approvals and PII redaction done; injection evals next |
 | 4. Deploy and demo | Docker on one VM, webhooks, Phoenix tracing, public sandbox | |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
 
@@ -28,7 +28,8 @@ src/copilot/shopify/   Shopify MCP server and its fake backend
 src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
 src/copilot/agent/     the LangGraph agent, its rules, guards, evals and command line
 src/copilot/approvals/ the approval app: durable runs in Postgres, review pages, sending and refunds
-src/copilot/audit.py   audit log of every tool call, with emails redacted
+src/copilot/audit.py   audit log of every tool call, with personal data redacted
+src/copilot/privacy.py personal data redaction for logs, traces, reports and model input
 tests/                 tests for the rules, the data and the MCP servers
 docker-compose.yml     Postgres with pgvector, and Arize Phoenix
 ```
@@ -179,6 +180,21 @@ python -m copilot.approvals                   # with Claude (needs ANTHROPIC_API
 
 The fake Zendesk and Shopify data reloads from the seed files on each start, so replies and refunds from an earlier session are gone after a restart; the paused runs and the queue are kept.
 
+## Personal data
+
+Customer data stays in the systems that own it (Zendesk and Shopify), where staff need it. Everywhere else it is replaced with a typed token before it is written or sent:
+
+```
+"I'm Ana Lee, card 4111 1111 1111 1111, call 415-555-0134. Order #1792."
+"I'm [NAME:1e190e8c] [NAME:1a78aaa2], card [CARD:a3e979c6], call [PHONE:6d457a47]. Order #1792."
+```
+
+- **Where it applies:** the audit log of every tool call (note text is not logged at all, only its length), application logs, eval reports, and the ticket text sent to the model. The model does not need a customer's name, email or card number to triage a ticket or draft a reply, so it never gets them.
+- **What it detects** (`copilot/privacy.py`): emails (except the store's own), phone numbers, card numbers that pass the Luhn check, "ends in 1234" card mentions, street addresses, IP addresses, and names: the requester's, every customer's in the store's records, and names after greetings. Order numbers, amounts, dates and product names are kept, because they make a log line useful and identify no one on their own.
+- **Tokens are keyed hashes** (HMAC with `COPILOT_REDACTION_KEY`): the same email always gives the same token, so log lines about one customer still connect, but without the key the value cannot be recovered or guessed by hashing candidates.
+- **Drafts are checked too:** a reply that repeats a phone number, email, card number or redaction token is flagged for the reviewer.
+- **Tested by leak scans:** tests run redaction over every seeded ticket and over the audit log of real agent runs, and fail if any customer's email or name survives. The scan caught two-letter surnames (Xu, Li) slipping through on its first run.
+
 ## Getting started (Windows)
 
 Requires Python 3.11+ and Docker Desktop.
@@ -210,6 +226,7 @@ In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead
 - **Committed, reproducible data.** CI regenerates the data and fails if the committed files differ.
 - **The model reads and writes; code decides.** Actions and refund amounts come from rules; the model's draft is checked before a person sees it.
 - **Only people send and refund.** The agent drafts and proposes; the approval app sends and refunds after a person approves, re-checking the refund first.
+- **Personal data stays home.** Logs, reports and model input carry tokens instead of names, emails and card numbers.
 - **One Postgres.** Knowledge base, approvals, job queue, LangGraph checkpoints and Phoenix all use one Postgres instance, with separate schemas.
 
 ## License

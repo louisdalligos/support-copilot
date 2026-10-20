@@ -130,7 +130,7 @@ def test_audit_log_hides_emails() -> None:
     audit = run(t)
     line = json.dumps(audit.records)
     assert "example.com" not in line
-    assert "email:" in line
+    assert "[EMAIL:" in line
 
 
 def test_ticket_resource_and_prompts() -> None:

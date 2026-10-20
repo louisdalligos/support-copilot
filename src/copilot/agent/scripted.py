@@ -23,6 +23,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 
+from copilot.agent.prompts import minimize
 from copilot.agent.schemas import Draft, FactCheck, Triage
 
 MONEY = re.compile(r"\$\s?(\d+(?:\.\d{2})?)")
@@ -61,7 +62,7 @@ class ScriptedModel:
 
 class OracleModel(ScriptedModel):
     def __init__(self, eval_cases: list[dict[str, Any]]) -> None:
-        self.by_text = {_key(c["ticket"]): c for c in eval_cases}
+        self.by_text = {_key(c["ticket"]): c for c in eval_cases}  # keyed by the text the model sees
         super().__init__(self._respond)
 
     def _case(self, messages: list[BaseMessage]) -> dict[str, Any]:
@@ -101,7 +102,10 @@ class OracleModel(ScriptedModel):
 
 
 def _key(ticket: dict[str, Any]) -> str:
-    return "\n\n".join(c["body"] for c in ticket["comments"] if c["author"] == "customer").strip()
+    name = ticket.get("requester_name", "")
+    return "\n\n".join(
+        minimize(c["body"], name) for c in ticket["comments"] if c["author"] == "customer"
+    ).strip()
 
 
 class AdversarialModel(ScriptedModel):

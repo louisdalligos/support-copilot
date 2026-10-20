@@ -19,9 +19,11 @@ from decimal import Decimal
 from typing import Any
 
 from copilot.agent.schemas import Action, Draft, Intent, Triage
+from copilot.privacy import find_personal_data
 from copilot.store import TODAY
 
 ORDER_NAME = re.compile(r"#\s?(\d{4,})")
+REDACTION_TOKEN = re.compile(r"\[(?:EMAIL|PHONE|CARD|CARD_LAST4|NAME|ADDRESS|IP):[0-9a-f]{8}\]")
 MONEY = re.compile(r"\$\s?(\d+(?:,\d{3})*(?:\.\d{2})?)")
 LOST_IN_TRANSIT_DAYS = 7
 TOOL_NAMES = (
@@ -249,6 +251,12 @@ def guard(draft: Draft, decision: Decision, ev: Evidence) -> GuardResult:
         flags.append(
             f"Reply mentions amounts not found in the evidence: {', '.join('$' + u for u in unsupported)}"
         )
+
+    personal = find_personal_data(draft.reply)
+    if REDACTION_TOKEN.search(draft.reply):
+        personal.append("a redaction token")
+    if personal:
+        flags.append("Reply contains " + ", ".join(personal))
 
     leaked = [name for name in TOOL_NAMES if name in draft.reply]
     if leaked:

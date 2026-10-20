@@ -126,6 +126,9 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     load_dotenv()
+    from copilot.privacy import install_log_redaction
+
+    install_log_redaction()
     parser = argparse.ArgumentParser(
         prog="python -m copilot.agent",
         description=__doc__,

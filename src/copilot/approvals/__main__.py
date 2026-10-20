@@ -71,8 +71,12 @@ def main() -> int:
                 storage.kind,
             )
 
+    from copilot.privacy import install_log_redaction
+
     app = create_app(open_service=open_service, model_name=args.model)
-    server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level="info"))
+    config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
+    install_log_redaction()  # after uvicorn has set up its loggers, so its handlers get the filter too
+    server = uvicorn.Server(config)
     print(f"Approval app on http://{args.host}:{args.port}")
     # psycopg's async driver cannot use Windows' default event loop, so pick the selector loop there.
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None

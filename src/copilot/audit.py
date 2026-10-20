@@ -1,38 +1,26 @@
 """Audit log for tool calls.
 
 Every MCP tool call writes one JSON line: when, which server and tool, the
-arguments with personal data redacted, and whether it succeeded. Lines go to
-stderr by default; never to stdout, which carries the MCP protocol over stdio.
+arguments with personal data redacted (see copilot.privacy), and whether it
+succeeded. Note text is not logged at all, only its length. Lines go to stderr
+by default; never to stdout, which carries the MCP protocol over stdio.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
-import re
 import sys
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
-EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-REDACTED_KEYS = {"email", "requester_email", "body"}
+from copilot import privacy
 
 
-def redact_email(text: str) -> str:
-    """Replace each email with a short stable hash, so log lines can still be correlated."""
-    return EMAIL.sub(lambda m: "email:" + hashlib.sha256(m.group().lower().encode()).hexdigest()[:10], text)
-
-
-def redact(value: Any, key: str | None = None) -> Any:
-    if isinstance(value, dict):
-        return {k: redact(v, k) for k, v in value.items()}
-    if isinstance(value, list):
-        return [redact(v) for v in value]
-    if isinstance(value, str):
-        if key == "body":
-            return f"<{len(value)} chars>"
-        return redact_email(value)
-    return value
+def redact(value: Any) -> Any:
+    """Arguments as logged: note bodies reduced to their length, everything else through copilot.privacy."""
+    if isinstance(value, dict) and "body" in value and isinstance(value["body"], str):
+        value = {**value, "body": f"<{len(value['body'])} chars>"}
+    return privacy.redact(value)
 
 
 class AuditLog:
@@ -50,7 +38,7 @@ class AuditLog:
             "outcome": outcome,
         }
         if detail:
-            entry["detail"] = redact_email(detail)
+            entry["detail"] = privacy.redact_text(detail)
         self.records.append(entry)
         self.stream.write(json.dumps(entry, sort_keys=True) + "\n")
         self.stream.flush()

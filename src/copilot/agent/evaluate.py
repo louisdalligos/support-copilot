@@ -32,6 +32,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from copilot import privacy
 from copilot.agent.graph import AgentContext, build_graph
 from copilot.agent.rules import MONEY, Decision, Evidence, RefundPlan, allowed_amounts
 from copilot.agent.schemas import Action, FactCheck
@@ -91,12 +92,13 @@ class Summary:
     by_action: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
-def _servers(retriever: Retriever) -> dict[str, Any]:
-    quiet = io.StringIO()
+def _servers(retriever: Retriever, audit_stream: io.StringIO | None = None) -> dict[str, Any]:
+    """Fresh fake servers for one ticket. Their audit lines go to `audit_stream` (discarded by default)."""
+    out = audit_stream or io.StringIO()
     return {
-        "zendesk": lambda: build_zendesk(FakeZendesk.from_generated(DATA), audit=AuditLog("zendesk", quiet)),
-        "shopify": lambda: build_shopify(FakeShopify.from_generated(DATA), audit=AuditLog("shopify", quiet)),
-        "policies": lambda: build_policies(retriever, audit=AuditLog("policies", quiet)),
+        "zendesk": lambda: build_zendesk(FakeZendesk.from_generated(DATA), audit=AuditLog("zendesk", out)),
+        "shopify": lambda: build_shopify(FakeShopify.from_generated(DATA), audit=AuditLog("shopify", out)),
+        "policies": lambda: build_policies(retriever, audit=AuditLog("policies", out)),
     }
 
 
@@ -333,7 +335,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  wrong {r.case_id}: expected {r.expected_action}, got {r.action}; flags: {r.flags}")
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"summary": asdict(summary), "cases": [asdict(r) for r in results]}
+        # Reports are build artifacts: no personal data in them.
+        payload = privacy.redact({"summary": asdict(summary), "cases": [asdict(r) for r in results]})
         args.out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     failed = []

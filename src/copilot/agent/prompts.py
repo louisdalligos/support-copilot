@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from copilot.privacy import redact_text
 from copilot.store import TODAY
 
 TRIAGE_SYSTEM = f"""\
@@ -49,15 +50,24 @@ Rules:
 - If the ticket asks several things, answer each one you can.
 - Cite the doc_id of every passage you rely on.
 - Set covered to false only for the answer action, when the passages and facts do not answer the question.
+- Personal details in the ticket appear as tokens like [EMAIL:1a2b3c4d] or [NAME:...]. Never copy a
+  token into the reply; greet the customer as "Hi there".
 - Keep it short, warm and plain. Sign it "Northwind Coffee Support"."""
 
 
+def minimize(text: str, requester_name: str = "") -> str:
+    """What the model may see of customer text: no emails, phone numbers, card numbers,
+    addresses or names. Order numbers, amounts and product names stay."""
+    return redact_text(text, names=requester_name.split())
+
+
 def ticket_block(ticket: dict[str, Any]) -> str:
-    """The customer's messages, marked as untrusted. Staff replies and notes are left out."""
-    lines = [f"Subject: {ticket['subject']}"]
+    """The customer's messages, minimized and marked as untrusted. Staff replies and notes are left out."""
+    name = ticket.get("requester", {}).get("name", "")
+    lines = [f"Subject: {minimize(ticket['subject'], name)}"]
     for c in ticket["comments"]:
         if "customer_text" in c:
-            lines.append(c["customer_text"])
+            lines.append(minimize(c["customer_text"], name))
     return "<ticket>\n" + "\n\n".join(lines) + "\n</ticket>"
 
 
