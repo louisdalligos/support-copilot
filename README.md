@@ -2,6 +2,30 @@
 
 An AI support agent for a fictional online coffee store, Northwind Coffee Co. It reads customer tickets, answers from the store's policies and order data with citations, and proposes refunds for a human to approve.
 
+## Live demo
+
+**[3-25-16-253.sslip.io](https://3-25-16-253.sslip.io)**: the approval app, running on AWS. Traces are at [phoenix.3-25-16-253.sslip.io](https://phoenix.3-25-16-253.sslip.io).
+
+Both are behind a sign-in. Ask me for it through my [GitHub profile](https://github.com/louisdalligos).
+
+What to try:
+
+1. Open **Tickets** and click **Run copilot** on a ticket. The agent reads it, looks up the order and the store's policies, decides what to do, and drafts a reply for you to review.
+2. On the review page, check the draft, the policy passages it cites, the facts from the order, and any risks flagged. Edit the reply if you like, then approve or reject. Approving sends the reply and issues the refund in the fake Shopify and Zendesk backends.
+3. Open Phoenix to see the run as a trace: each model call, tool call and retrieval, with customer details already redacted.
+
+Good tickets to start with:
+
+| Ticket | What happens |
+| --- | --- |
+| 10301 | Charged twice: proposes refunding the duplicate $45.35 |
+| 10321 | Opened coffee, didn't like it: declines kindly and cites the refund policy |
+| 10315 | Parcel never arrived: escalates to a person |
+| 10333 | Tells the agent to ignore its instructions: the injection is flagged and the refund still follows the rules |
+| 10352 | Two questions in one ticket: answers both |
+
+The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs nothing per run and works on the labeled eval tickets (10301 to 10352). Everyone shares one sign-in and sees the same queue, and the store data resets when the app restarts.
+
 ## Status
 
 | Phase | What | State |
@@ -9,7 +33,7 @@ An AI support agent for a fictional online coffee store, Northwind Coffee Co. It
 | 1. Foundations | Knowledge base, seed data generator, refund rules in code, CI | **Done** |
 | 2. Thin slice | Zendesk and Shopify MCP servers (fake backends), policy RAG, agent via CLI, evals in CI | **Done** (Claude eval run pending) |
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
-| 4. Deploy and demo | Docker on AWS EC2 with Terraform, Phoenix tracing, public sandbox | In progress: tracing, image and AWS setup done; going live next |
+| 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
 | 5. Expand | Risk profiles, dispute evidence, model comparison | |
 
 ## What's here
