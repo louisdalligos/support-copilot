@@ -61,6 +61,9 @@ def build_server(retriever: Retriever, *, audit: AuditLog | None = None, **setti
 
         result = retriever.search(query, k=k, as_of=day, include_superseded=include_superseded)
         audit.record("search_policies", args, "ok")
+        return _payload(result)
+
+    def _payload(result: Any) -> dict[str, Any]:
         return {
             "relevant": result.relevant,
             "top_score": round(result.top_score, 4) if result.top_score is not None else None,

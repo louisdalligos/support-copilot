@@ -26,6 +26,7 @@ from langgraph.types import Command
 
 from copilot.agent.graph import AgentContext, build_graph
 from copilot.agent.tools import stdio_tools
+from copilot.tracing import run_context, setup_tracing, shutdown_tracing
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -74,7 +75,8 @@ async def run(args: argparse.Namespace) -> int:
         ctx = AgentContext(
             tools=tools, triage_model=triage_m, draft_model=draft_m, reviewer_name=args.reviewer
         )
-        state = await graph.ainvoke({"ticket_id": args.ticket_id}, config, context=ctx)
+        with run_context(args.ticket_id, config["configurable"]["thread_id"], step="draft"):
+            state = await graph.ainvoke({"ticket_id": args.ticket_id}, config, context=ctx)
         if state.get("status") == "failed":
             print(f"Could not run: {state.get('error')}", file=sys.stderr)
             return 1
@@ -115,9 +117,10 @@ async def run(args: argparse.Namespace) -> int:
             approved = answer in ("y", "yes")
         else:
             approved = args.approve
-        state = await graph.ainvoke(
-            Command(resume={"approved": approved, "reviewer": args.reviewer}), config, context=ctx
-        )
+        with run_context(args.ticket_id, config["configurable"]["thread_id"], step="decision"):
+            state = await graph.ainvoke(
+                Command(resume={"approved": approved, "reviewer": args.reviewer}), config, context=ctx
+            )
         print(
             f"\n{state['status'].capitalize()} by {args.reviewer}. (On the fake backend nothing is really sent.)"
         )
@@ -147,12 +150,18 @@ def main() -> int:
     )
     decision.add_argument("--reject", dest="approve", action="store_false", help="reject without asking")
     r.add_argument("--verbose", action="store_true", help="show every tool call")
+    r.add_argument("--no-tracing", action="store_true", help="do not send traces to Phoenix")
     args = parser.parse_args()
 
     if args.command == "tickets":
         asyncio.run(list_tickets())
         return 0
-    return asyncio.run(run(args))
+    if not args.no_tracing:
+        setup_tracing("agent-cli")
+    try:
+        return asyncio.run(run(args))
+    finally:
+        shutdown_tracing()
 
 
 if __name__ == "__main__":

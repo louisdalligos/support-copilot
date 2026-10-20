@@ -37,6 +37,7 @@ from copilot.agent.rules import (
 )
 from copilot.agent.schemas import Action, Draft, Intent, Triage
 from copilot.agent.tools import StoreTools, ToolCallError
+from copilot.tracing import retrieval_span
 
 MAX_PASSAGES = 8
 DEFAULT_QUERIES = {
@@ -147,7 +148,9 @@ async def gather(state: State, runtime: Runtime[AgentContext]) -> State:
     queries = list(dict.fromkeys([*t.questions[:3], DEFAULT_QUERIES.get(t.intent, "")]))
     seen: set[tuple[str, str | None]] = set()
     for q in (q for q in queries if q.strip()):
-        found = await tools.try_call("search_policies", query=q, k=4, as_of=as_of)
+        with retrieval_span(q, "search_policies") as record:
+            found = await tools.try_call("search_policies", query=q, k=4, as_of=as_of)
+            record((found or {}).get("results", []))
         for p in (found or {}).get("results", []):
             key = (p["doc_id"], p.get("section"))
             if key not in seen and len(ev.passages) < MAX_PASSAGES:

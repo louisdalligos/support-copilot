@@ -34,6 +34,7 @@ def main() -> int:
     parser.add_argument("--model", choices=["claude", "oracle"], default="claude")
     parser.add_argument("--memory", action="store_true", help="do not use Postgres")
     parser.add_argument("--rag-models", action="store_true", help="dense search and reranker for policies")
+    parser.add_argument("--no-tracing", action="store_true", help="do not send traces to Phoenix")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
@@ -76,11 +77,24 @@ def main() -> int:
     app = create_app(open_service=open_service, model_name=args.model)
     config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
     install_log_redaction()  # after uvicorn has set up its loggers, so its handlers get the filter too
+    from copilot.tracing import setup_tracing, shutdown_tracing
+
+    if args.no_tracing:
+        print("Tracing is off (--no-tracing).")
+    elif setup_tracing("approval-app"):
+        print(
+            "Tracing to Phoenix (COPILOT_TRACING=off to stop). Check the connection: python -m copilot.tracing"
+        )
+    else:
+        print("Tracing is off: COPILOT_TRACING is set to off, or the tracing packages are not installed.")
     server = uvicorn.Server(config)
     print(f"Approval app on http://{args.host}:{args.port}")
     # psycopg's async driver cannot use Windows' default event loop, so pick the selector loop there.
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
-    asyncio.run(server.serve(), loop_factory=loop_factory)
+    try:
+        asyncio.run(server.serve(), loop_factory=loop_factory)
+    finally:
+        shutdown_tracing()
     return 0
 
 

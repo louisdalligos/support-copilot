@@ -44,6 +44,7 @@ from copilot.rag.retriever import Retriever
 from copilot.rag.server import build_server as build_policies
 from copilot.shopify.backend import FakeShopify
 from copilot.shopify.server import build_server as build_shopify
+from copilot.tracing import run_context, setup_tracing, shutdown_tracing
 from copilot.zendesk.backend import FakeZendesk
 from copilot.zendesk.server import build_server as build_zendesk
 
@@ -176,7 +177,8 @@ async def run_case(
     try:
         async with in_memory_tools(_servers(retriever)) as tools:
             ctx = AgentContext(tools=tools, triage_model=triage_model, draft_model=draft_model)
-            state = await graph.ainvoke({"ticket_id": case["ticket"]["id"]}, context=ctx)
+            with run_context(case["ticket"]["id"], f"eval-{case['case_id']}", eval_case=case["case_id"]):
+                state = await graph.ainvoke({"ticket_id": case["ticket"]["id"]}, context=ctx)
     except Exception as e:  # noqa: BLE001 - one broken ticket must not stop the eval
         return CaseResult(
             case["case_id"],
@@ -319,9 +321,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rag-models", action="store_true", help="use dense search and the reranker")
     parser.add_argument("--out", type=Path, help="write the summary and every case as JSON")
     parser.add_argument("--min-action", type=float, help="exit 1 if action accuracy is below this")
+    parser.add_argument("--trace", action="store_true", help="send every run's trace to Phoenix")
     args = parser.parse_args(argv)
 
-    summary, results = asyncio.run(evaluate(args))
+    if args.trace:
+        setup_tracing("agent-eval")
+    try:
+        summary, results = asyncio.run(evaluate(args))
+    finally:
+        shutdown_tracing()
     for key, value in asdict(summary).items():
         if key != "by_action":
             print(f"{key:<24} {value}")

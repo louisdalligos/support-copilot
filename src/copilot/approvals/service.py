@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import io
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -33,6 +35,7 @@ from copilot.rag.server import build_server as build_policies
 from copilot.shopify.backend import FakeShopify
 from copilot.shopify.refunds import RefundError, check_refund_request
 from copilot.shopify.server import build_server as build_shopify
+from copilot.tracing import run_context
 from copilot.zendesk.backend import FakeZendesk
 from copilot.zendesk.server import build_server as build_zendesk
 
@@ -42,6 +45,14 @@ SUPPORT_SIGNATURE = "Northwind Coffee Support"
 
 class ApprovalError(RuntimeError):
     """A decision that cannot be carried out. The message is shown to the reviewer."""
+
+
+@contextmanager
+def _traced(record: dict[str, Any], reviewer: str, approved: bool) -> Iterator[None]:
+    with run_context(
+        record["ticket_id"], record["thread_id"], step="decision", approved=approved, reviewer=reviewer
+    ):
+        yield
 
 
 def _normalize(text: str) -> str:
@@ -101,9 +112,10 @@ class ApprovalService:
         """Run the agent on a ticket until it needs a person. Returns the queue record."""
         thread_id = f"ticket-{ticket_id}-{uuid.uuid4().hex[:8]}"
         async with in_memory_tools(self.backends.servers()) as tools:
-            state = await self.graph.ainvoke(
-                {"ticket_id": ticket_id}, self._config(thread_id), context=self._context(tools)
-            )
+            with run_context(ticket_id, thread_id, step="draft"):
+                state = await self.graph.ainvoke(
+                    {"ticket_id": ticket_id}, self._config(thread_id), context=self._context(tools)
+                )
         if state.get("status") == "failed":
             raise ApprovalError(state.get("error") or "The agent could not run on this ticket.")
 
@@ -186,11 +198,12 @@ class ApprovalService:
                 self._recheck_refund(state, proposal)  # raises before anything changes
 
             async with in_memory_tools(self.backends.servers()) as tools:
-                await self.graph.ainvoke(
-                    Command(resume={"approved": approved, "reviewer": reviewer, "reply": reply}),
-                    self._config(thread_id),
-                    context=self._context(tools, reviewer),
-                )
+                with _traced(record, reviewer, approved):
+                    await self.graph.ainvoke(
+                        Command(resume={"approved": approved, "reviewer": reviewer, "reply": reply}),
+                        self._config(thread_id),
+                        context=self._context(tools, reviewer),
+                    )
 
             ticket_id = record["ticket_id"]
             outcome: dict[str, Any] = {}
