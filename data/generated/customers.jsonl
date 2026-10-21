@@ -341,3 +341,11 @@
 {"accepts_marketing": false, "country": "US", "created_at": "2025-08-22T20:29:00Z", "email": "priya.yilmaz.2341@example.com", "first_name": "Priya", "id": 2341, "last_name": "Yilmaz", "province": "MA"}
 {"accepts_marketing": true, "country": "US", "created_at": "2024-11-20T11:36:00Z", "email": "zoe.dubois.2342@example.com", "first_name": "Zoe", "id": 2342, "last_name": "Dubois", "province": "NY"}
 {"accepts_marketing": false, "country": "US", "created_at": "2025-02-09T07:51:00Z", "email": "hana.fischer.2343@example.com", "first_name": "Hana", "id": 2343, "last_name": "Fischer", "province": "WA"}
+{"accepts_marketing": true, "country": "US", "created_at": "2025-06-06T14:43:00Z", "email": "celia.baker.2344@example.com", "first_name": "Celia", "id": 2344, "last_name": "Baker", "province": "CO"}
+{"accepts_marketing": true, "country": "US", "created_at": "2026-02-05T20:56:00Z", "email": "isaac.baker.2345@example.com", "first_name": "Isaac", "id": 2345, "last_name": "Baker", "province": "MA"}
+{"accepts_marketing": false, "country": "US", "created_at": "2025-05-27T21:45:00Z", "email": "celia.okafor.2346@example.com", "first_name": "Celia", "id": 2346, "last_name": "Okafor", "province": "PA"}
+{"accepts_marketing": true, "country": "US", "created_at": "2024-06-27T20:32:00Z", "email": "wes.johansson.2347@example.com", "first_name": "Wes", "id": 2347, "last_name": "Johansson", "province": "GA"}
+{"accepts_marketing": true, "country": "US", "created_at": "2025-05-01T17:02:00Z", "email": "celia.ueda.2348@example.com", "first_name": "Celia", "id": 2348, "last_name": "Ueda", "province": "CO"}
+{"accepts_marketing": true, "country": "US", "created_at": "2026-06-25T17:47:00Z", "email": "alma.dubois.2349@example.com", "first_name": "Alma", "id": 2349, "last_name": "Dubois", "province": "CO"}
+{"accepts_marketing": false, "country": "US", "created_at": "2024-05-14T12:11:00Z", "email": "celia.patel.2350@example.com", "first_name": "Celia", "id": 2350, "last_name": "Patel", "province": "CA"}
+{"accepts_marketing": true, "country": "US", "created_at": "2025-04-20T17:54:00Z", "email": "jonah.dubois.2351@example.com", "first_name": "Jonah", "id": 2351, "last_name": "Dubois", "province": "IL"}

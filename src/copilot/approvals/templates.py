@@ -30,11 +30,15 @@ BASE = """<!doctype html>
   .chip { display:inline-block; padding:1px 8px; border-radius:99px; background:var(--chip); font-size:12px; white-space:nowrap; }
   .chip.propose_refund { color:var(--ok); } .chip.decline_refund { color:var(--warn); }
   .chip.escalate { color:var(--bad); } .chip.approved { color:var(--ok); } .chip.rejected { color:var(--bad); }
+  .chip.risk-low { color:var(--ok); } .chip.risk-medium { color:var(--warn); } .chip.risk-high { color:var(--bad); }
   .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
   @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
   .msg { white-space:pre-wrap; border-left:3px solid var(--line); padding:4px 0 4px 12px; margin:8px 0; }
   .msg.customer { border-color:var(--accent); }
   .flag { color:var(--warn); margin:4px 0; }
+  .chip.respond, .chip.submitted { color:var(--ok); } .chip.accept, .chip.accepted { color:var(--warn); }
+  .due-soon { color:var(--bad); font-weight:600; }
+  pre.fields { white-space:pre-wrap; font-size:12.5px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; overflow-x:auto; }
   .notice { padding:10px 14px; border-radius:8px; margin-bottom:16px; background:var(--chip); }
   .notice.error { color:var(--bad); }
   textarea { width:100%; min-height:260px; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
@@ -50,6 +54,7 @@ BASE = """<!doctype html>
   <strong>Northwind Support Copilot</strong>
   <a href="/">Queue</a>
   <a href="/tickets">New tickets</a>
+  <a href="/disputes">Chargebacks</a>
   <span class="muted small" style="margin-left:auto">storage: {{ storage }} · model: {{ model }}</span>
 </header>
 <main>
@@ -63,6 +68,8 @@ QUEUE = """{% extends "base.html" %}
 {% block content %}
 <h1>Approval queue</h1>
 <p class="muted">Every reply and refund the copilot drafts waits here for a person. Nothing reaches a customer until you approve it.</p>
+
+{% if chargebacks %}<div class="notice">{{ chargebacks|length }} chargeback{{ "s" if chargebacks|length > 1 }} need{{ "" if chargebacks|length > 1 else "s" }} a response; the next is due in {{ chargebacks[0].days_left }} day{{ "" if chargebacks[0].days_left == 1 else "s" }}. <a href="/disputes">Review the evidence</a></div>{% endif %}
 
 <h2>Waiting for approval ({{ pending|length }})</h2>
 {% if pending %}
@@ -151,6 +158,10 @@ RUN = """{% extends "base.html" %}
     <dl>
       <dt>Intent</dt><dd>{{ state.triage.intent|replace("_", " ") }}</dd>
       <dt>Order</dt><dd>{{ state.triage.order_name or "none given" }}</dd>
+      {% set risk = (state.evidence.customer or {}).risk %}
+      {% if risk %}<dt>Customer</dt><dd><span class="chip risk-{{ risk.level }}">{{ risk.level }} risk</span>
+        <span class="muted small">{{ risk.orders }} orders · {{ risk.refunds }} refunds · {{ risk.disputes }} chargebacks</span>
+        {% for r in risk.reasons %}<div class="small">{{ r }}</div>{% endfor %}</dd>{% endif %}
       {% if state.triage.chargeback_risk %}<dt>Risk</dt><dd class="flag">mentions their bank or a chargeback</dd>{% endif %}
       {% if state.triage.injection %}<dt>Warning</dt><dd class="flag">the ticket tries to instruct the assistant</dd>{% endif %}
       <dt>Decision</dt><dd><span class="chip {{ state.action }}">{{ state.action|replace("_", " ") }}</span><br>{{ state.decision.reason }}</dd>
@@ -219,4 +230,96 @@ RUN = """{% extends "base.html" %}
 </div>
 {% endblock %}"""
 
-TEMPLATES = {"base.html": BASE, "queue.html": QUEUE, "tickets.html": TICKETS, "run.html": RUN}
+DISPUTES = """{% extends "base.html" %}
+{% block content %}
+<h1>Chargebacks</h1>
+<p class="muted">Open disputes, soonest deadline first. For each one the copilot assembles the evidence from the store's records and recommends whether to respond or accept. A person submits it; nothing goes to the bank from here.</p>
+{% if disputes %}
+<table>
+  <tr><th>Dispute</th><th>Order</th><th>Reason</th><th>Amount</th><th>Evidence due</th><th>Recommended</th><th>Status</th></tr>
+  {% for d in disputes %}
+  <tr>
+    <td><a href="/disputes/{{ d.id }}">#{{ d.id }}</a></td>
+    <td>{{ d.order_name }}</td>
+    <td>{{ d.reason_label }}</td>
+    <td>${{ d.amount }}</td>
+    <td>{{ d.evidence_due_by }} <span class="small {{ 'due-soon' if d.days_left is not none and d.days_left <= 3 else 'muted' }}">{% if d.days_left is not none %}{% if d.days_left < 0 %}overdue{% else %}{{ d.days_left }} day{{ "" if d.days_left == 1 else "s" }} left{% endif %}{% endif %}</span></td>
+    <td><span class="chip {{ d.recommendation }}">{{ d.recommendation }}</span></td>
+    <td>{% if d.decision %}<span class="chip {{ d.decision.decision }}">{{ d.decision.decision }}</span> <span class="muted small">by {{ d.decision.reviewer }}</span>{% else %}<span class="muted">needs a response</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">No open chargebacks.</p>{% endif %}
+{% endblock %}"""
+
+DISPUTE = """{% extends "base.html" %}
+{% block content %}
+{% set d = packet.dispute %}{% set o = packet.order %}{% set rec = packet.recommendation %}
+<p><a href="/disputes">&larr; Chargebacks</a></p>
+<h1>Chargeback #{{ d.id }} · {{ d.reason_label }} · ${{ d.amount }}</h1>
+<p class="muted">Order {{ o.name }} · {{ packet.customer.name }} · opened {{ d.opened }} ·
+  evidence due {{ d.due }}{% if d.days_left is not none %} <span class="{{ 'due-soon' if d.days_left <= 3 else '' }}">({% if d.days_left < 0 %}overdue{% else %}{{ d.days_left }} day{{ "" if d.days_left == 1 else "s" }} left{% endif %})</span>{% endif %}</p>
+
+<div class="grid">
+<div>
+  <div class="card">
+    <h2 style="margin-top:0">Recommendation: <span class="chip {{ rec.action }}">{{ rec.action }}</span></h2>
+    <p>{{ rec.why }}</p>
+    {% if packet.rebuttal %}<h2>Rebuttal</h2><div class="msg">{{ packet.rebuttal }}</div>{% endif %}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Timeline</h2>
+    <dl>{% for e in packet.timeline %}<dt>{{ e.date }}</dt><dd>{{ e.event }}</dd>{% endfor %}</dl>
+  </div>
+  {% for key, ev in packet.evidence.items() %}
+  <div class="card">
+    <h2 style="margin-top:0">{{ ev.title }}</h2>
+    <p class="small">{{ ev.summary }}</p>
+    {% if ev.rows %}<table>{% for r in ev.rows %}<tr>{% for c in r %}<td class="small">{{ c }}</td>{% endfor %}</tr>{% endfor %}</table>{% endif %}
+    {% for m in ev.messages or [] %}<div class="msg {{ 'customer' if m.from == 'Customer' else '' }}"><span class="muted small">{{ m.date }} · {{ m.from }}</span><br>{{ m.text }}</div>{% endfor %}
+  </div>
+  {% endfor %}
+  {% if packet.policy %}<div class="card"><h2 style="margin-top:0">{{ packet.policy.title }}</h2><p class="small">{{ packet.policy.text }}</p></div>{% endif %}
+</div>
+
+<div>
+  <div class="card">
+    <h2 style="margin-top:0">Evidence file</h2>
+    <p class="small">One PDF, grouped by evidence type, within the card networks' limits (4.5 MB, 19 pages).</p>
+    <p><a href="/disputes/{{ d.id }}/evidence.pdf"><button type="button">Download evidence PDF</button></a></p>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Shopify evidence fields</h2>
+    <p class="small muted">The values for Shopify's dispute evidence form (ShopifyPaymentsDisputeEvidenceUpdateInput). Upload the PDF as the uncategorized file. Submit stays off: you submit.</p>
+    <pre class="fields">{{ fields_json }}</pre>
+  </div>
+  <div class="card">
+  {% if decision %}
+    <h2 style="margin-top:0">Marked {{ decision.decision }} by {{ decision.reviewer }}</h2>
+    <p class="muted small">{{ decision.decided_at|replace("T", " ")|replace("Z", " UTC") }}{% if decision.decision == "submitted" and decision.recommended == "accept" or decision.decision == "accepted" and decision.recommended == "respond" %} · differs from the recommendation ({{ decision.recommended }}){% endif %}</p>
+  {% elif d.open %}
+    <h2 style="margin-top:0">After you act in Shopify</h2>
+    <p class="small">Submit the evidence in the Shopify admin (the order's chargeback page), or accept the chargeback there, then record it here.</p>
+    <form method="post" action="/disputes/{{ d.id }}/decide">
+      <div class="actions">
+        {% if reviewer_locked %}<span class="small muted">Signed in as <strong>{{ reviewer }}</strong></span>{% else %}<label class="small muted">Your name <input type="text" name="reviewer" value="{{ reviewer }}" required></label>{% endif %}
+        <button class="{{ 'primary' if rec.action == 'respond' else '' }}" name="decision" value="submitted">Evidence submitted</button>
+        <button class="{{ 'primary' if rec.action == 'accept' else '' }}" name="decision" value="accepted">Accepted</button>
+      </div>
+    </form>
+  {% else %}
+    <h2 style="margin-top:0">Closed</h2><p class="muted small">Status: {{ d.status|replace("_", " ") }}</p>
+  {% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}"""
+
+TEMPLATES = {
+    "base.html": BASE,
+    "queue.html": QUEUE,
+    "tickets.html": TICKETS,
+    "run.html": RUN,
+    "disputes.html": DISPUTES,
+    "dispute.html": DISPUTE,
+}

@@ -65,6 +65,7 @@ class Dataset:
     transactions: list[dict[str, Any]] = field(default_factory=list)
     refunds: list[dict[str, Any]] = field(default_factory=list)
     disputes: list[dict[str, Any]] = field(default_factory=list)
+    dispute_cases: list[dict[str, Any]] = field(default_factory=list)
     tickets: list[dict[str, Any]] = field(default_factory=list)
     eval_tickets: list[dict[str, Any]] = field(default_factory=list)
     rag_questions: list[dict[str, Any]] = field(default_factory=list)

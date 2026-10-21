@@ -194,3 +194,43 @@ def test_pages_send_security_headers():
     page = TestClient(create_app(service(), model_name="oracle")).get("/")
     assert page.headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in page.headers["Content-Security-Policy"]
+
+
+def test_customer_risk_reaches_the_queue_and_the_note():
+    async def scenario():
+        svc = service()
+        high = await svc.start(10353)  # serial refunder asks for a refund the policy would allow
+        assert high["status"] == "escalated" and high["action"] == "escalate"
+        assert "high risk customer" in high["risks"]
+        assert "customer is high risk (3 refunds in the last 90 days;" in high["reason"]
+        assert svc.backends.shopify.proposals(svc.backends.shopify.order(high_order)["id"]) == []
+        note = svc.backends.zendesk.get(10353)["comments"][-1]["body"]
+        assert "Customer risk: high (3 refunds in the last 90 days;" in note
+
+        medium = await svc.start(10356)  # medium risk: still proposed, with the risk shown
+        assert medium["status"] == "pending" and medium["refund_amount"] == "22.00"
+        assert "medium risk customer" in medium["risks"]
+        info = await svc.detail(medium["thread_id"])
+        assert "Customer risk medium: 2 refunds in the last 90 days" in info["state"]["flags"]
+
+        dup = await svc.start(10357)  # high risk, but a duplicate charge is still refunded
+        assert dup["status"] == "pending" and dup["refund_amount"] == "45.35"
+
+    high_order = next(e for e in load_eval_cases(DATA / "eval_tickets.jsonl") if e["ticket"]["id"] == 10353)[
+        "labels"
+    ]["order_name"]
+    asyncio.run(scenario())
+
+
+def test_review_page_shows_the_risk_profile():
+    svc = service()
+    record = asyncio.run(svc.start(10356))
+    client = TestClient(create_app(svc, model_name="oracle"))
+    page = client.get(f"/runs/{record['thread_id']}").text
+    assert "medium risk" in page and "2 refunds in the last 90 days" in page
+
+
+def test_unknown_run_is_a_404_page():
+    client = TestClient(create_app(service(), model_name="oracle"))
+    got = client.get("/runs/ticket-1-nothing")
+    assert got.status_code == 404 and "No run ticket-1-nothing" in got.text

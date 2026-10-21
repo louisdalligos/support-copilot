@@ -9,6 +9,7 @@ from typing import Any
 
 from copilot.seed.catalog import build_catalog
 from copilot.seed.common import Dataset
+from copilot.seed.disputes import build_dispute_cases
 from copilot.seed.evals import build_eval_tickets, build_rag_questions
 from copilot.seed.orders import build_order_history
 from copilot.seed.people import build_customers
@@ -27,6 +28,7 @@ FILES = {
     "tickets.jsonl": "tickets",
     "eval_tickets.jsonl": "eval_tickets",
     "rag_questions.jsonl": "rag_questions",
+    "dispute_cases.jsonl": "dispute_cases",
 }
 
 
@@ -41,6 +43,7 @@ def build_dataset(seed: str = SEED) -> Dataset:
     # adding a scenario never changes the background data.
     build_eval_tickets(ds, random.Random(f"{seed}-evals"))
     build_rag_questions(ds)
+    build_dispute_cases(ds)
     return ds
 
 

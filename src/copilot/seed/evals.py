@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 from copilot.policy import Outcome, Problem, RefundDecision, check_refund
 from copilot.seed.common import Dataset, add_days, fmt_money, human_date, iso_dt, messy, money
-from copilot.seed.orders import add_refund, add_transaction, new_order
+from copilot.seed.orders import add_dispute, add_refund, add_transaction, new_order
 from copilot.seed.people import new_customer
 from copilot.store import AUTH_HOLD_RELEASE, DESCRIPTOR_SUBSCRIPTION, REFUND_PROCESSING, TODAY
 
@@ -53,6 +54,7 @@ class Scenario:
     policy_reason: str | None = None
     refund_inputs: dict[str, Any] | None = None  # what the customer told us: opened? problem?
     messy_phrasings: tuple[int, ...] = ()
+    customer_risk: str = "low"  # copilot.risk level of the customer's history
 
 
 class Builder:
@@ -477,6 +479,102 @@ def _two_issue_scenario(b: Builder) -> Scenario:
     )  # fmt: skip
 
 
+def _risk_scenarios(b: Builder) -> list[Scenario]:
+    """Refunds the policy allows, for customers whose history calls for a person (copilot.risk).
+
+    A high-risk customer's item refund is escalated, a medium-risk one is still proposed (with
+    the risk shown to the reviewer), and a duplicate charge is refunded whatever the risk,
+    because the store took that money by mistake.
+    """
+    coffee = b.product("coffee", contains="Kenya")
+    blend = b.product("coffee", contains="Dark Harbor 12 oz")
+    kettle = b.product("equipment", contains="Gooseneck Kettle 1L")
+    house = b.product("coffee", contains="House Blend 2 lb")
+
+    def past_refunds(customer: dict[str, Any], days_ago: list[int]) -> None:
+        for d in days_ago:
+            o = b.order(customer, [(coffee, 1)], created_days_ago=d + 8, delivered_days_ago=d + 3)
+            add_refund(
+                b.ds, b.rng, o, money(coffee["price"]), day=add_days(TODAY, -d), note="Customer request"
+            )
+
+    def past_orders(customer: dict[str, Any], days_ago: list[int]) -> None:
+        for d in days_ago:
+            b.order(customer, [(house, 1)], created_days_ago=d + 5, delivered_days_ago=d)
+
+    def lost_chargeback(customer: dict[str, Any], days_ago: int) -> None:
+        o = b.order(customer, [(blend, 1)], created_days_ago=days_ago + 30, delivered_days_ago=days_ago + 25)
+        add_dispute(
+            b.ds, b.rng, o, reason="product_not_received", status="lost", day=add_days(TODAY, -days_ago)
+        )
+
+    scenarios = []
+
+    def refund_with_history(
+        group: str, history: Callable[[dict[str, Any]], Any], risk: str, **kw: Any
+    ) -> None:
+        sc = b.refund_scenario(group, **kw)
+        history(sc.customer)
+        sc.customer_risk = risk
+        if risk == "high":
+            sc.expected_action, sc.refund_amount, sc.required_facts = "escalate", None, []
+        scenarios.append(sc)
+
+    refund_with_history(
+        "risk-serial-refunder",
+        lambda c: past_refunds(c, [20, 45, 70]),
+        "high",
+        intent="refund_request",
+        product=kettle,
+        delivered_days_ago=12,
+        opened=True,
+        problem=Problem.DEFECTIVE,
+        phrasings=[
+            ("Kettle broken again", "The {item} from {order} won't heat anymore. I'd like a refund please."),
+            ("refund", "{item} in {order} is broken, refund me"),
+        ],
+    )
+    refund_with_history(
+        "risk-lost-chargeback",
+        lambda c: lost_chargeback(c, 60),
+        "high",
+        intent="damaged_or_lost",
+        product=blend,
+        delivered_days_ago=4,
+        opened=False,
+        problem=Problem.DAMAGED,
+        phrasings=[("Damaged bag", "The {item} in {order} arrived split open. Refund please.")],
+    )
+    refund_with_history(
+        # Two recent refunds, but a small share of a long history: medium, so still proposed.
+        "risk-medium-proposed",
+        lambda c: (past_refunds(c, [30, 75]), past_orders(c, [120, 160, 200])),
+        "medium",
+        intent="refund_request",
+        product=coffee,
+        delivered_days_ago=9,
+        opened=False,
+        problem=Problem.NONE,
+        phrasings=[("Return unopened bag", "Can I return the {item} from {order}? It's still sealed.")],
+    )
+
+    # A duplicate charge for a high-risk customer is still refunded.
+    c = b.customer()
+    lost_chargeback(c, 80)
+    o = b.order(c, [(house, 1)], created_days_ago=5, delivered_days_ago=1)
+    add_transaction(
+        b.ds, b.rng, o, kind="sale", status="success", amount=money(o["total"]), day=add_days(TODAY, -5)
+    )
+    scenarios.append(Scenario(
+        "risk-duplicate-still-refunded", "duplicate_charge", "propose_refund",
+        [("Charged twice", f"My card was charged ${o['total']} twice for {o['name']}, both posted. Please refund one.")],
+        c, o, refund_amount=money(o["total"]),
+        required_facts=[f"Order {o['name']} was captured twice", f"The duplicate ${o['total']} will be refunded", f"Refunds take {REFUND_PROCESSING}"],
+        expected_docs=["pending-and-duplicate-charges"], customer_risk="high",
+    ))  # fmt: skip
+    return scenarios
+
+
 def _split_for(index: int) -> str:
     return "test" if index % 3 == 2 else "dev"
 
@@ -489,6 +587,9 @@ def build_eval_tickets(ds: Dataset, rng: random.Random) -> None:
         + _injection_scenarios(b)
         + _question_scenarios(b)
         + [_two_issue_scenario(b)]
+        # Scenarios added later draw from their own random stream, so adding them leaves every
+        # earlier ticket (its text, its timestamps) exactly as it was.
+        + _risk_scenarios(Builder(ds, random.Random("northwind-risk-scenarios")))
     )
     case_no = 0
     for index, sc in enumerate(scenarios):
@@ -530,6 +631,7 @@ def build_eval_tickets(ds: Dataset, rng: random.Random) -> None:
                         "expected_docs": sc.expected_docs,
                         "policy_reason": sc.policy_reason,
                         "refund_inputs": sc.refund_inputs,
+                        "customer_risk": sc.customer_risk,
                     },
                 }
             )

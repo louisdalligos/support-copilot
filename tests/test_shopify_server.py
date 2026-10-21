@@ -92,7 +92,9 @@ def test_eligibility_matches_eval_labels() -> None:
                 )
             )
             assert result["reason"] == labels["policy_reason"], case["case_id"]
-            assert result["refundable"] == (labels["expected_action"] == "propose_refund"), case["case_id"]
+            # A high-risk customer's refund passes the policy but is escalated (copilot.risk).
+            policy_allows = labels["expected_action"] == "propose_refund" or labels["customer_risk"] == "high"
+            assert result["refundable"] == policy_allows, case["case_id"]
 
     run(t)
 
@@ -123,6 +125,8 @@ def _propose_like_label(case: dict[str, Any]) -> Callable[[ClientSession], Await
             filed = payload(result)
             assert filed["status"] == "pending_approval"
             assert filed["amount"] == labels["refund_amount"]
+        elif labels["customer_risk"] == "high":
+            assert "High-risk customer" in error_text(result), case["case_id"]
         else:
             assert "Policy does not allow" in error_text(result), case["case_id"]
 
@@ -184,5 +188,19 @@ def test_order_resource() -> None:
     async def t(client: ClientSession) -> None:
         res = await client.read_resource("shopify://orders/1792")
         assert json.loads(res.contents[0].text)["name"] == "#1792"
+
+    run(t)
+
+
+def test_customer_risk_profile() -> None:
+    risky = next(c for c in EVALS if c["group"] == "risk-lost-chargeback")
+    normal = next(c for c in EVALS if c["group"] == "dup-true")
+
+    async def t(client: ClientSession) -> None:
+        got = payload(await client.call_tool("get_customer", {"email": risky["ticket"]["requester_email"]}))
+        assert got["risk"]["level"] == "high" and got["risk"]["reasons"] == ["1 chargeback the store lost"]
+        assert got["dispute_count"] == 1
+        ok = payload(await client.call_tool("get_customer", {"email": normal["ticket"]["requester_email"]}))
+        assert ok["risk"]["level"] == "low" and ok["risk"]["reasons"] == []
 
     run(t)

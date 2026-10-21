@@ -29,6 +29,7 @@ from copilot.agent.rules import (
     Decision,
     Evidence,
     RefundPlan,
+    customer_risk,
     decide,
     guard,
     needs_item_check,
@@ -167,8 +168,17 @@ async def gather(state: State, runtime: Runtime[AgentContext]) -> State:
 
 
 async def decide_node(state: State) -> State:
-    decision = decide(Triage(**state["triage"]), _evidence(state))
-    return {"decision": asdict(decision) | {"action": decision.action.value}, "action": decision.action.value}
+    ev = _evidence(state)
+    decision = decide(Triage(**state["triage"]), ev)
+    flags = list(state.get("flags", []))
+    risk = customer_risk(ev)
+    if risk["level"] != "low":
+        flags.append(f"Customer risk {risk['level']}: {'; '.join(risk['reasons'])}")
+    return {
+        "decision": asdict(decision) | {"action": decision.action.value},
+        "action": decision.action.value,
+        "flags": flags,
+    }
 
 
 def _facts(ev: Evidence, decision: Decision) -> dict[str, Any]:
@@ -254,6 +264,12 @@ def _note(state: State) -> str:
         f"Intent: {t['intent']}" + (f", order {t['order_name']}" if t.get("order_name") else ""),
         f"Decision: {d['reason']}",
     ]
+    risk = ((state.get("evidence") or {}).get("customer") or {}).get("risk")
+    if risk:
+        lines.append(
+            f"Customer risk: {risk['level']}"
+            + (f" ({'; '.join(risk['reasons'])})" if risk["reasons"] else "")
+        )
     if state.get("proposal"):
         p = state["proposal"]
         lines.append(f"Refund proposal #{p['id']}: ${p['amount']} ({p['reason']}), pending approval.")

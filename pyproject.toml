@@ -30,6 +30,8 @@ dependencies = [
     "openinference-instrumentation-langchain>=0.1.30",
     # A real Shopify store through the Admin API (copilot.shopify.live).
     "httpx>=0.27",
+    # Chargeback evidence as one PDF (copilot.disputes.pdf).
+    "reportlab>=4.0",
 ]
 
 [project.scripts]

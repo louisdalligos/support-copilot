@@ -8,7 +8,8 @@ a customer.
 Every proposal is checked in code before it is filed: the amount must fit
 what is still refundable, a duplicate-charge refund needs a real duplicate
 capture, and an item refund must pass the refund policy rules in
-copilot.policy. A model can ask for anything; only valid proposals get through.
+copilot.policy and be for a customer who is not high risk (copilot.risk).
+A model can ask for anything; only valid proposals get through.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from copilot import risk
 from copilot.audit import AuditLog
 from copilot.policy import Problem
 from copilot.shopify.backend import NotFound, ShopifyBackend, connect
@@ -33,6 +35,7 @@ from copilot.shopify.refunds import (
     order_detail,
     parse_amount,
 )
+from copilot.store import today as store_today
 
 MAX_LIMIT = 50
 
@@ -64,6 +67,25 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
         audit.record(tool, args, "ok")
         return result
 
+    def customer_risk(email: str) -> dict[str, Any]:
+        orders = backend.orders_for(email, limit=1000)
+        try:
+            since = backend.customer(email).get("created_at")
+        except NotFound:
+            since = None
+        # The relationship starts at the first order if that is older than the account record
+        # (an imported customer, or a store that recreated its customers).
+        first = min((o["created_at"] for o in orders), default=None)
+        if first and (since is None or first < since):
+            since = first
+        return risk.profile(
+            orders,
+            [r for o in orders for r in backend.refunds(o["id"])],
+            [d for o in orders for d in backend.disputes(o["id"])],
+            today=store_today(),
+            customer_since=since,
+        )
+
     @mcp.tool(title="Get order", annotations=READ)
     def get_order(order_name: str) -> dict[str, Any]:
         """Get an order by its number (like #1792): items, shipping and delivery dates, every payment
@@ -72,15 +94,17 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
 
     @mcp.tool(title="Get customer", annotations=READ)
     def get_customer(email: str, order_limit: int = 10) -> dict[str, Any]:
-        """Get a customer by email, with their most recent orders and how many disputes they have filed."""
+        """Get a customer by email, with their most recent orders, how many disputes they have filed,
+        and their risk profile (low, medium or high, with the reasons) from their refund and dispute history."""
 
         def run() -> dict[str, Any]:
             customer = backend.customer(email)
             orders = backend.orders_for(email, limit=min(max(order_limit, 1), MAX_LIMIT))
-            disputes = sum(len(backend.disputes(o["id"])) for o in backend.orders_for(email, limit=1000))
+            profile = customer_risk(email)
             return {
                 **customer,
-                "dispute_count": disputes,
+                "dispute_count": profile["disputes"],
+                "risk": profile,
                 "recent_orders": [
                     {
                         "name": o["name"],
@@ -141,7 +165,8 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
         """File a refund proposal for a person to approve. It does NOT refund anything.
 
         For reason=duplicate_charge, the order must have been captured more than once.
-        For reason=item_refund, give line_item_id, opened and problem; the item must pass the policy check.
+        For reason=item_refund, give line_item_id, opened and problem; the item must pass the policy check,
+        and the customer must not be high risk.
         The amount can never exceed what is still refundable on the order."""
         args = {
             "order_name": order_name,
@@ -164,6 +189,14 @@ def build_server(backend: ShopifyBackend, *, audit: AuditLog | None = None, **se
                 problem=problem,
             )
             detail, value, policy = checked.order, checked.amount, checked.policy
+            if reason == "item_refund":
+                profile = customer_risk(detail["email"])
+                if profile["level"] == "high":
+                    raise RefundError(
+                        "High-risk customer ("
+                        + "; ".join(profile["reasons"])
+                        + "): a person must decide this refund"
+                    )
             filed = backend.file_proposal(
                 {
                     "order_id": detail["id"],

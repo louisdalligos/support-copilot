@@ -38,7 +38,7 @@ python -m copilot.shopify.demo_store setup     # safe to run again; creates only
 python -m copilot.shopify.demo_store status
 ```
 
-This creates the 14 products and 28 orders that the labeled demo tickets (10301 to 10352) refer to, under the same order numbers, with their customers, payments, deliveries and past refunds. Dates move forward so that each order keeps its age relative to today: an order delivered 10 days before the seed data's date is delivered 10 days ago. The orders are tagged `northwind-demo` and marked as test orders.
+This creates the 14 products and 42 orders that the labeled demo tickets (10301 to 10357) refer to, under the same order numbers, with their customers, payments, deliveries and past refunds. Dates move forward so that each order keeps its age relative to today: an order delivered 10 days before the seed data's date is delivered 10 days ago. The orders are tagged `northwind-demo` and marked as test orders.
 
 With a live store, the store's "today" is the real date (it is fixed at 2026-10-15 with the seed data), so refund windows count from real delivery dates. As weeks pass, the demo orders age too: an order that was inside the 30-day window will fall outside it. That is how a real store behaves.
 

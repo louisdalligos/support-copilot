@@ -398,6 +398,10 @@ class LiveShopify:
         # Disputes come from Shopify Payments, which development stores do not use.
         return []
 
+    def list_disputes(self) -> list[dict[str, Any]]:
+        # Same: a development store on the test gateway has no chargebacks to list.
+        return []
+
     def customer(self, email: str) -> dict[str, Any]:
         q = """query($q: String!) { customers(first: 5, query: $q) { nodes {
               legacyResourceId email firstName lastName createdAt

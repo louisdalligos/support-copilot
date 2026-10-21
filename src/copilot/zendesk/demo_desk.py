@@ -4,10 +4,10 @@
     python -m copilot.zendesk.demo_desk status             # what is there
     python -m copilot.zendesk.demo_desk send 10301         # a new ticket, as if the customer just wrote it
 
-setup imports the labeled demo tickets (10301-10352 in the seed data) with their
+setup imports the labeled demo tickets (10301-10357 in the seed data) with their
 customers, through Zendesk's ticket import API. Imported tickets keep their dates
 (moved forward to today, like the Shopify demo orders) and do not fire triggers, so
-setup does not start 52 copilot runs. Run the copilot on them from the approval
+setup does not start a copilot run for each. Run the copilot on them from the approval
 app's Tickets page.
 
 send creates a fresh copy of one demo ticket through the normal API, so the
@@ -129,7 +129,7 @@ class DemoDesk:
         """A new ticket with the text of one demo ticket, created now. Fires the triggers."""
         match = [t for t in demo_tickets() if t["id"] == seed_id]
         if not match:
-            raise SystemExit(f"No demo ticket {seed_id}; the demo tickets are 10301-10352.")
+            raise SystemExit(f"No demo ticket {seed_id}; the demo tickets are 10301-10357.")
         t = match[0]
         uid = self.user_id(t["requester_name"], t["requester_email"])
         first = t["comments"][0]
@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("setup", help="import the demo tickets that are missing")
     sub.add_parser("status", help="list the demo tickets in Zendesk")
     send = sub.add_parser("send", help="create a new ticket from one demo ticket (fires the webhook)")
-    send.add_argument("seed_id", type=int, help="seed ticket id, 10301-10352")
+    send.add_argument("seed_id", type=int, help="seed ticket id, 10301-10357")
     args = parser.parse_args(argv)
 
     from copilot.agent.__main__ import load_dotenv

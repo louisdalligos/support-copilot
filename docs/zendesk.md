@@ -39,7 +39,7 @@ python -m copilot.zendesk.demo_desk setup      # safe to run again; imports only
 python -m copilot.zendesk.demo_desk status
 ```
 
-This imports the 52 labeled demo tickets (10301 to 10352 in the seed data) with their customers, through Zendesk's ticket import API. Their dates move forward so each ticket keeps its age, like the Shopify orders. Imported tickets do not fire triggers, so importing them does not start 52 copilot runs.
+This imports the 57 labeled demo tickets (10301 to 10357 in the seed data) with their customers, through Zendesk's ticket import API. Their dates move forward so each ticket keeps its age, like the Shopify orders. Imported tickets do not fire triggers, so importing them does not start 57 copilot runs.
 
 Zendesk numbers tickets itself (1, 2, 3, ...). Each demo ticket keeps its seed id in its external ID (`northwind-10301`) and is tagged `northwind-demo`.
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -30,6 +31,7 @@ from langgraph.types import Command
 from copilot.agent.graph import AgentContext, build_graph
 from copilot.agent.tools import in_memory_tools
 from copilot.audit import AuditLog
+from copilot.disputes.evidence import DisputeNotFound, build_packet, open_disputes
 from copilot.rag.retriever import Retriever
 from copilot.rag.server import build_server as build_policies
 from copilot.shopify.backend import FakeShopify
@@ -40,6 +42,8 @@ from copilot.zendesk.backend import ZendeskBackend
 from copilot.zendesk.server import build_server as build_zendesk
 
 NAMESPACE = ("approvals",)
+DISPUTES = ("disputes",)
+DISPUTE_DECISIONS = ("submitted", "accepted")
 SUPPORT_SIGNATURE = "Northwind Coffee Support"
 
 
@@ -120,6 +124,8 @@ class ApprovalService:
             raise ApprovalError(state.get("error") or "The agent could not run on this ticket.")
 
         ticket = state["ticket"]
+        customer = (state.get("evidence") or {}).get("customer") or {}
+        risk_level = (customer.get("risk") or {}).get("level", "low")
         record = {
             "thread_id": thread_id,
             "ticket_id": ticket_id,
@@ -136,6 +142,7 @@ class ApprovalService:
                 for label, on in (
                     ("possible prompt injection", state["triage"].get("injection")),
                     ("chargeback risk", state["triage"].get("chargeback_risk")),
+                    (f"{risk_level} risk customer", risk_level in ("medium", "high")),
                 )
                 if on
             ],
@@ -253,3 +260,52 @@ class ApprovalService:
             )
         except RefundError as e:
             raise ApprovalError(f"The refund can no longer be issued: {e}") from None
+
+    # Chargebacks
+
+    async def dispute_decisions(self) -> dict[int, dict[str, Any]]:
+        found = await self.store.asearch(DISPUTES, limit=500)
+        return {item.value["dispute_id"]: item.value for item in found}
+
+    async def disputes(self) -> list[dict[str, Any]]:
+        """Open chargebacks, soonest deadline first, with any decision already recorded here."""
+        decided = await self.dispute_decisions()
+        out = []
+        for d in open_disputes(self.backends.shopify):
+            packet = build_packet(self.backends.shopify, self.backends.zendesk, d["id"])
+            out.append(
+                d | {"decision": decided.get(d["id"]), "recommendation": packet["recommendation"]["action"]}
+            )
+        return out
+
+    async def dispute(self, dispute_id: int) -> dict[str, Any]:
+        try:
+            packet = build_packet(self.backends.shopify, self.backends.zendesk, dispute_id)
+        except DisputeNotFound as e:
+            raise ApprovalError(str(e)) from None
+        return {
+            "packet": packet,
+            "fields_json": json.dumps(packet["shopify_fields"], indent=2, ensure_ascii=False),
+            "decision": (await self.dispute_decisions()).get(dispute_id),
+        }
+
+    async def decide_dispute(self, dispute_id: int, *, decision: str, reviewer: str) -> dict[str, Any]:
+        """Record that a person submitted the evidence (in Shopify) or accepted the chargeback.
+
+        Nothing is sent to the bank from here: the person submits the evidence themselves."""
+        if decision not in DISPUTE_DECISIONS:
+            raise ApprovalError(f"decision must be one of {', '.join(DISPUTE_DECISIONS)}")
+        info = await self.dispute(dispute_id)
+        if info["decision"]:
+            raise ApprovalError(f"Chargeback {dispute_id} was already marked {info['decision']['decision']}.")
+        if not info["packet"]["dispute"]["open"]:
+            raise ApprovalError(f"Chargeback {dispute_id} is not open.")
+        record = {
+            "dispute_id": dispute_id,
+            "decision": decision,
+            "recommended": info["packet"]["recommendation"]["action"],
+            "reviewer": reviewer,
+            "decided_at": _now(),
+        }
+        await self.store.aput(DISPUTES, str(dispute_id), record)
+        return record

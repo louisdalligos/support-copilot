@@ -29,6 +29,7 @@ class ShopifyBackend(Protocol):
     def transactions(self, order_id: int) -> list[dict[str, Any]]: ...
     def refunds(self, order_id: int) -> list[dict[str, Any]]: ...
     def disputes(self, order_id: int) -> list[dict[str, Any]]: ...
+    def list_disputes(self) -> list[dict[str, Any]]: ...
     def customer(self, email: str) -> dict[str, Any]: ...
     def orders_for(self, email: str, *, limit: int) -> list[dict[str, Any]]: ...
     def transactions_matching(self, amount: Decimal, *, limit: int) -> list[dict[str, Any]]: ...
@@ -89,6 +90,15 @@ class FakeShopify:
 
     def disputes(self, order_id: int) -> list[dict[str, Any]]:
         return copy.deepcopy(self._disputes.get(order_id, []))
+
+    def list_disputes(self) -> list[dict[str, Any]]:
+        """Every chargeback on the store, newest first, each with its order's number."""
+        found = [
+            {**d, "order_name": self._orders_by_id[d["order_id"]]["name"]}
+            for rows in self._disputes.values()
+            for d in rows
+        ]
+        return copy.deepcopy(sorted(found, key=lambda d: d["initiated_at"], reverse=True))
 
     def customer(self, email: str) -> dict[str, Any]:
         try:

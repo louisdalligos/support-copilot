@@ -3,7 +3,7 @@
     python -m copilot.shopify.demo_store setup      # create what is missing (safe to run again)
     python -m copilot.shopify.demo_store status     # what is there
 
-It creates the orders that the labeled demo tickets (10301-10352) refer to, with
+It creates the orders that the labeled demo tickets (10301-10357) refer to, with
 their customers and products, under the same order names (#1792...), so those
 tickets work against the real store. Dates move forward by the days between the
 seed data's fixed date (2026-10-15) and today, so every order keeps its age: a

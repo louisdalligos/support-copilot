@@ -38,9 +38,10 @@ Both are behind a sign-in. Ask me for it through my [GitHub profile](https://git
 
 What to try:
 
-1. Open **Tickets** and click **Run copilot** on a ticket. The agent reads it, looks up the order and the store's policies, decides what to do, and drafts a reply for you to review.
+1. Open **New tickets** and click **Run copilot** on a ticket. The agent reads it, looks up the order and the store's policies, decides what to do, and drafts a reply for you to review.
 2. On the review page, check the draft, the policy passages it cites, the facts from the order, and any risks flagged. Edit the reply if you like, then approve or reject. Approving sends the reply and issues the refund in the fake Shopify and Zendesk backends.
-3. Open Phoenix to see the run as a trace: each model call, tool call and retrieval, with customer details already redacted.
+3. Open **Chargebacks** to see the evidence the copilot assembled for each open dispute, its recommendation (respond or accept), and the evidence PDF.
+4. Open Phoenix to see the run as a trace: each model call, tool call and retrieval, with customer details already redacted.
 
 Good tickets to start with:
 
@@ -51,8 +52,10 @@ Good tickets to start with:
 | 10315 | Parcel never arrived: escalates to a person |
 | 10333 | Tells the agent to ignore its instructions: the injection is flagged and the refund still follows the rules |
 | 10352 | Two questions in one ticket: answers both |
+| 10353 | A refund the policy allows, from a customer with 3 refunds in 90 days: escalated, with the reasons |
+| 10357 | Charged twice by a high-risk customer: still refunded, because the mistake was the store's |
 
-The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs nothing per run and works on the labeled eval tickets (10301 to 10352). Everyone shares one sign-in and sees the same queue, and the store data resets when the app restarts.
+The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs nothing per run and works on the labeled eval tickets (10301 to 10357). Everyone shares one sign-in and sees the same queue, and the store data resets when the app restarts.
 
 ## Status
 
@@ -63,7 +66,7 @@ The demo runs the scripted eval model (`COPILOT_MODEL=oracle`), so it costs noth
 | 3. Hardening | Prompt-injection evals, PII redaction, durable approvals, approval UI | **Done** |
 | 4. Deploy and demo | Docker on AWS EC2 with Terraform, deploys from GitHub Actions, Phoenix tracing, live demo | **Done** ([live demo](#live-demo)) |
 | 5. Real systems | A real Shopify store and Zendesk account, webhooks | **Done**: live Shopify store and Zendesk account; new tickets drafted automatically by webhook |
-| 6. Expand | Risk profiles, dispute evidence, model comparison | |
+| 6. Expand | Customer risk profiles, chargeback evidence, model comparison | In progress: risk profiles and chargeback evidence done; model comparison next |
 
 ## What's here
 
@@ -72,6 +75,7 @@ data/kb/               39 policy and help documents (2 are outdated versions, on
 data/generated/        seed data, generated and committed (see below)
 src/copilot/store.py   the store's facts: refund window, shipping prices, descriptors
 src/copilot/policy.py  refund rules as code; the agent's safety check uses this
+src/copilot/risk.py    customer risk profile from refund and dispute history
 src/copilot/kb.py      knowledge-base loader
 src/copilot/seed/      deterministic seed data generator
 src/copilot/zendesk/   Zendesk MCP server, its fake backend and the live Zendesk API backend
@@ -79,6 +83,7 @@ src/copilot/shopify/   Shopify MCP server, its fake backend and the live Shopify
 src/copilot/rag/       policy retrieval (BM25 + embeddings + reranker), its evals and MCP server
 src/copilot/agent/     the LangGraph agent, its rules, guards, evals and command line
 src/copilot/approvals/ the approval app: durable runs in Postgres, review pages, sending and refunds
+src/copilot/disputes/  chargeback evidence: the packet, its rebuttal and the PDF
 src/copilot/audit.py   audit log of every tool call, with personal data redacted
 src/copilot/privacy.py personal data redaction for logs, traces, reports and model input
 src/copilot/tracing.py OpenTelemetry tracing to Phoenix, redacted before export
@@ -100,10 +105,11 @@ docs/aws.md            how to run it on AWS, deployed from GitHub Actions
 | File | Contents |
 | --- | --- |
 | `products.jsonl` | 135 products: coffee, equipment, merch, subscriptions, gift cards |
-| `customers.jsonl` | 343 synthetic customers (all `@example.com`) |
-| `orders.jsonl`, `transactions.jsonl`, `refunds.jsonl`, `disputes.jsonl` | 819 orders with payment records, including failed attempts, double captures and refunds |
+| `customers.jsonl` | 351 synthetic customers (all `@example.com`) |
+| `orders.jsonl`, `transactions.jsonl`, `refunds.jsonl`, `disputes.jsonl` | 841 orders with payment records, including failed attempts, double captures, refunds and chargebacks |
 | `tickets.jsonl` | 300 past, resolved tickets: the "past tickets" source for RAG. Some quote the old 14-day policy |
-| `eval_tickets.jsonl` | 52 labeled tickets for agent evals, split into dev and held-out test sets |
+| `eval_tickets.jsonl` | 57 labeled tickets for agent evals, split into dev and held-out test sets |
+| `dispute_cases.jsonl` | 4 open chargebacks with the right response labeled: respond with evidence, or accept |
 | `rag_questions.jsonl` | 48 golden questions for retrieval evals, including 3 the knowledge base cannot answer |
 
 Each eval ticket carries its expected intent, action (`answer`, `propose_refund`, `decline_refund`, `escalate`), refund amount, facts the reply must contain, and the documents it should cite. Refund labels are computed by `copilot.policy`, the same rules the agent's safety check uses, so labels and runtime behavior cannot drift apart.
@@ -231,8 +237,8 @@ load_ticket -> triage -> gather -> decide -> draft -> write_back -> approval
 
 | Model | What it tests | Result |
 | --- | --- | --- |
-| `oracle` (reads the labels) | Everything except the model: tools, rules, guards. Given a perfect reading, is every decision right? | 52 tickets: action 100%, refund amounts 100%, 0 unsafe |
-| `adversarial` (lies about every ticket, invents amounts and sources) | The safety rails. Can a compromised model get an out-of-policy refund or an unflagged reply through? | 52 tickets, 0 unsafe: every proposal passed the policy check and stayed within the item price; every made-up amount, source and tool name was flagged |
+| `oracle` (reads the labels) | Everything except the model: tools, rules, guards. Given a perfect reading, is every decision right? | 57 tickets: action 100%, refund amounts 100%, 0 unsafe |
+| `adversarial` (lies about every ticket, invents amounts and sources) | The safety rails. Can a compromised model get an out-of-policy refund or an unflagged reply through? | 57 tickets, 0 unsafe: every proposal passed the policy check and stayed within the item price; every made-up amount, source and tool name was flagged |
 | `claude` (Haiku 5.5 triages, Sonnet 5.5 drafts) | The real agent | 36 dev tickets, two runs: action 100%, refund amounts 100%, intent 100%, 0 unsafe, 0 errors; required facts 94% and 98%; citations 94%; about 8 seconds per ticket |
 
 **What the Claude runs showed.** Facts are judged by a second Claude call that checks each required fact against the reply. The misses are real but small:
@@ -281,6 +287,40 @@ python -m copilot.approvals                   # with Claude (needs ANTHROPIC_API
 ```
 
 The fake Zendesk and Shopify data reloads from the seed files on each start, so replies and refunds from an earlier session are gone after a restart; the paused runs and the queue are kept.
+
+## Customer risk and chargebacks
+
+### Risk profiles
+
+Before money moves, the copilot looks at the customer's history with the store (`copilot/risk.py`) and rates it low, medium or high, with a reason for every signal:
+
+| Signal | Medium | High |
+| --- | --- | --- |
+| Refunds in the last 90 days | 2 | 3 or more |
+| Share of everything spent that was refunded (2+ refunds) | 30% | 50% |
+| Chargebacks | 1 filed, won by the store | lost, still open, or 2+ filed |
+| New account | opened under 14 days ago | |
+
+- **High risk escalates.** An item refund the policy would allow goes to a person instead of being proposed, with the reasons in the note: "3 refunds in the last 90 days; $66.00 of $165.85 spent (40%) was refunded". The Shopify MCP server refuses the proposal too, so the rule holds even if the agent's own check were bypassed.
+- **Medium risk informs.** The refund is still proposed, and the risk is shown in the queue and on the review page.
+- **The store's mistakes are not held against anyone.** A refund for a duplicate charge is proposed at any risk level, and refunds for duplicate charges do not count as signals.
+- **Behaviour only.** Nothing about who the customer is (name, location or any personal trait) is used, and every level comes with its reasons, so a person can judge it.
+- **Measured.** Five new labeled tickets cover a serial refunder, a customer with a lost chargeback, a medium-risk refund that is still proposed, and a high-risk duplicate charge that is still refunded.
+
+### Chargeback evidence
+
+When a customer disputes a charge with their bank, the store has a deadline to send evidence. The **Chargebacks** page lists open disputes, soonest deadline first, and for each one assembles the response from the store's records (`copilot/disputes/`):
+
+![Chargeback 4007: "product not received", but the carrier delivered it and the customer wrote to support afterwards. The copilot recommends responding, with the rebuttal, timeline, delivery record, the customer's message, the Shopify evidence fields and the evidence PDF](docs/images/chargeback-evidence.png)
+
+- **A recommendation: respond or accept.** Accepting is the right call when the evidence cannot win, for example a "not received" claim with no proof of delivery. That is what the payment providers advise.
+- **Evidence that answers the reason.** Delivery records for "not received", earlier undisputed orders from the same account for "fraudulent", the refund record for a dispute over something already refunded (a "credit issued" response), and only the relevant section of the refund policy, not the whole document.
+- **A short, neutral rebuttal and a timeline in date order**, as Stripe's dispute guidance recommends.
+- **Shopify's own format.** The fields map one to one onto Shopify's `ShopifyPaymentsDisputeEvidenceUpdateInput`, and everything is also rendered as one PDF: US Letter, 12-point text, within the card networks' limits (4.5 MB, and Mastercard's 19 pages). A packet over either limit is refused before it reaches the bank.
+- **No model in this path.** What goes to a bank must say exactly what the records say, so the packet is assembled by code, and its tests check it against four labeled cases.
+- **A person submits.** `submitEvidence` stays false. The reviewer submits in Shopify and records the decision here, and the page notes when it differs from the recommendation.
+
+A development store on Shopify's test gateway has no real chargebacks, so this runs on the seed data; with a live store on Shopify Payments the same packet would be built from its disputes.
 
 ## Prompt injection
 
@@ -424,6 +464,8 @@ In PowerShell, activate with `.venv\Scripts\Activate.ps1` and use `copy` instead
 - **Committed, reproducible data.** CI regenerates the data and fails if the committed files differ.
 - **The model reads and writes; code decides.** Actions and refund amounts come from rules; the model's draft is checked before a person sees it.
 - **Only people send and refund.** The agent drafts and proposes; the approval app sends and refunds after a person approves, re-checking the refund first.
+- **Risk changes who decides, not the rules.** A risky history sends a refund to a person; it never changes what the policy allows, and the store's own mistakes are always refunded.
+- **Evidence is assembled, not generated.** Chargeback responses come from records by code, so nothing sent to a bank can be made up.
 - **Personal data stays home.** Logs, reports and model input carry tokens instead of names, emails and card numbers.
 - **One VM, one compose file.** One EC2 instance costs less than a managed database or a load balancer alone, and the same compose file runs on a laptop. The guide lists what would change at larger scale.
 - **One Postgres.** Knowledge base, approvals, job queue, LangGraph checkpoints and Phoenix all use one Postgres instance, with separate schemas.

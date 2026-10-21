@@ -121,6 +121,11 @@ def _pending_proposals(order: dict[str, Any]) -> Decimal:
     )
 
 
+def customer_risk(ev: Evidence) -> dict[str, Any]:
+    """The customer's risk profile from the Shopify lookup (copilot.risk); low when unknown."""
+    return (ev.customer or {}).get("risk") or {"level": "low", "reasons": []}
+
+
 def decide(triage: Triage, ev: Evidence, *, today: date | None = None) -> Decision:
     decision = _decide(triage, ev, today or store_today())
     if triage.injection and decision.action is Action.PROPOSE_REFUND:
@@ -128,6 +133,20 @@ def decide(triage: Triage, ev: Evidence, *, today: date | None = None) -> Decisi
         # automatic refund proposal, even if the rules would allow one.
         return Decision(
             Action.ESCALATE, "Possible prompt injection on a refund request; a person should review."
+        )
+    risk = customer_risk(ev)
+    if (
+        decision.action is Action.PROPOSE_REFUND
+        and decision.refund is not None
+        and decision.refund.reason == "item_refund"
+        and risk["level"] == "high"
+    ):
+        # A discretionary refund for a high-risk customer is a person's call. A duplicate charge
+        # is not: that money was taken by the store's mistake and is refunded either way.
+        return Decision(
+            Action.ESCALATE,
+            f"{decision.reason} The refund would be allowed, but the customer is high risk "
+            f"({'; '.join(risk['reasons'])}); a person should decide.",
         )
     return decision
 

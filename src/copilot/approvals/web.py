@@ -7,6 +7,10 @@
     POST /runs/{thread_id}/decide approve (optionally with an edited reply) or reject
     GET  /healthz                 liveness, for Docker and uptime checks
     POST /webhooks/zendesk        a new Zendesk ticket: run the copilot on it (signed by Zendesk)
+    GET  /disputes                open chargebacks, soonest deadline first
+    GET  /disputes/{id}           the evidence packet: recommendation, rebuttal, evidence, Shopify fields
+    GET  /disputes/{id}/evidence.pdf  the packet as one PDF, to upload with the response
+    POST /disputes/{id}/decide    record that a person submitted the evidence or accepted the chargeback
 
 Meant to run on localhost, or behind a reverse proxy that signs people in (see
 infra/caddy/Caddyfile). Behind the proxy:
@@ -36,6 +40,8 @@ from starlette.routing import Route
 from copilot.approvals.service import ApprovalError, ApprovalService
 from copilot.approvals.templates import TEMPLATES
 from copilot.approvals.webhooks import ZendeskWebhook
+from copilot.disputes.pdf import EvidenceTooLarge
+from copilot.disputes.pdf import render as render_pdf
 
 env = Environment(loader=DictLoader(TEMPLATES), autoescape=select_autoescape(default=True))
 
@@ -85,15 +91,15 @@ def create_app(
         return holder["service"]
 
     def render(request: Request, name: str, status: int = 200, **ctx: Any) -> HTMLResponse:
-        html = env.get_template(name).render(
-            storage=holder["storage"],
-            model=model_name,
-            notice=request.query_params.get("notice"),
-            notice_kind=request.query_params.get("kind", ""),
-            reviewer=_trusted_user(request) or _default_reviewer(),
-            reviewer_locked=_trusted_user(request) is not None,
-            **ctx,
-        )
+        page = {
+            "storage": holder["storage"],
+            "model": model_name,
+            "notice": request.query_params.get("notice"),
+            "notice_kind": request.query_params.get("kind", ""),
+            "reviewer": _trusted_user(request) or _default_reviewer(),
+            "reviewer_locked": _trusted_user(request) is not None,
+        }
+        html = env.get_template(name).render(page | ctx)  # a page may set its own notice
         return HTMLResponse(html, status_code=status)
 
     def go(path: str, notice: str | None = None, kind: str = "") -> RedirectResponse:
@@ -103,9 +109,11 @@ def create_app(
 
     async def queue(request: Request) -> Response:
         records = await svc().records()
+        chargebacks = [d for d in await svc().disputes() if not d["decision"]]
         return render(
             request,
             "queue.html",
+            chargebacks=chargebacks,
             pending=[r for r in records if r["status"] == "pending"],
             escalated=[r for r in records if r["status"] == "escalated"],
             decided=[r for r in records if r["status"] in ("approved", "rejected")][:20],
@@ -165,6 +173,48 @@ def create_app(
             note = "Rejected. The ticket is back in the team's queue."
         return go("/", note)
 
+    async def disputes(request: Request) -> Response:
+        return render(request, "disputes.html", disputes=await svc().disputes())
+
+    async def dispute(request: Request) -> Response:
+        try:
+            info = await svc().dispute(int(request.path_params["dispute_id"]))
+        except ApprovalError as e:
+            return render(
+                request, "disputes.html", status=404, disputes=[], notice=str(e), notice_kind="error"
+            )
+        return render(request, "dispute.html", **info)
+
+    async def dispute_pdf(request: Request) -> Response:
+        dispute_id = int(request.path_params["dispute_id"])
+        try:
+            packet = (await svc().dispute(dispute_id))["packet"]
+            data = render_pdf(packet)
+        except (ApprovalError, EvidenceTooLarge) as e:
+            return go(f"/disputes/{dispute_id}", str(e), "error")
+        return Response(
+            data,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="chargeback-{dispute_id}-evidence.pdf"',
+                "Cache-Control": "no-store",  # it holds the customer's details
+            },
+        )
+
+    async def decide_dispute(request: Request) -> Response:
+        dispute_id = int(request.path_params["dispute_id"])
+        form = await request.form()
+        reviewer = _trusted_user(request) or str(form.get("reviewer") or "").strip()
+        decision = str(form.get("decision") or "")
+        if not reviewer:
+            return go(f"/disputes/{dispute_id}", "Give your name.", "error")
+        try:
+            await svc().decide_dispute(dispute_id, decision=decision, reviewer=reviewer)
+        except ApprovalError as e:
+            return go(f"/disputes/{dispute_id}", str(e), "error")
+        done = "Marked as submitted." if decision == "submitted" else "Marked as accepted."
+        return go("/disputes", f"Chargeback {dispute_id}: {done}")
+
     async def healthz(request: Request) -> Response:
         return JSONResponse({"ok": svc() is not None, "storage": holder["storage"]})
 
@@ -174,6 +224,10 @@ def create_app(
         Route("/tickets/{ticket_id:int}/run", run_ticket, methods=["POST"]),
         Route("/runs/{thread_id}", review),
         Route("/runs/{thread_id}/decide", decide, methods=["POST"]),
+        Route("/disputes", disputes),
+        Route("/disputes/{dispute_id:int}", dispute),
+        Route("/disputes/{dispute_id:int}/evidence.pdf", dispute_pdf),
+        Route("/disputes/{dispute_id:int}/decide", decide_dispute, methods=["POST"]),
         Route("/healthz", healthz),
         Route(
             "/webhooks/zendesk",
